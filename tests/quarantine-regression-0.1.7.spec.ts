@@ -30,7 +30,10 @@
  * and two pin a measured DEFECT (D1). They say so in capitals, name the exact
  * trigger, and are meant to be inverted when the behaviour is closed; they exist
  * so the residual risk stays measurable instead of anecdotal, exactly as the
- * residual-window case in `quarantine-lifecycle.spec.ts` does.
+ * residual-window case in `quarantine-lifecycle.spec.ts` does. Two of them have
+ * been inverted already: closing the Agent-scoped executor tombstone (a released
+ * declaration is not restored, it is kept unavailable) also closed the PTC
+ * presentation fold and the re-opened `run_code` transport.
  *
  * Assertion discipline: a refusal is only counted when `isError === true` AND the
  * text names the specific guard, and an allowed call is only counted when the
@@ -478,13 +481,23 @@ async function wireTools(ctx: Context, agent: Agent): Promise<string[]> {
 
 /** Execute one tool as one Agent and report whether it was refused, and why. */
 async function call(h: Harness, agent: Agent, name: string, args: object = {}) {
-  const result = await h.ctx.tools.execute({
-    callId: ToolCallId(`${name}-${Math.random()}`),
-    name,
-    arguments: args,
+  // DSH rc.3 dispatches a BATCH of tool calls, so the pre-batch single-call
+  // shape this suite was written against no longer exists. The helper keeps its
+  // old one-result signature by sending a one-call batch and unwrapping the one
+  // outcome; the result sits one level deeper, under `ToolCallResult.result`.
+  const batch = await h.ctx.tools.execute({
+    calls: [{
+      type: 'tool-call',
+      id: ToolCallId(`${name}-${Math.random()}`),
+      name,
+      arguments: JSON.stringify(args),
+    }],
     agent,
     signal: new AbortController().signal,
   })
+  const settlement = batch.results[0]
+  if (settlement === undefined) throw new Error(`the ${name} batch settled no result`)
+  const result = settlement.result
   return {
     isError: result.isError === true,
     text: result.content.flatMap(block => block.type === 'text' && block.text !== undefined ? [block.text] : []).join(''),
@@ -584,7 +597,7 @@ describe('HMR/remount repeats itself without changing the classification', () =>
 })
 
 describe('the PTC presentation fold', () => {
-  it('leaves a quarantined PTC captain with no callable tool at all, recovery channel included', async () => {
+  it('keeps a quarantined PTC captain governed and leaves its recovery channel callable', async () => {
     // A custom Team forces a native presentation of its own, so this Session
     // really does run a native surface while the Team is applied.
     const h = await setup({ teams: [definition('A', 'alpha')], selections: SELECTED, ptc: true })
@@ -595,31 +608,32 @@ describe('the PTC presentation fold', () => {
     await h.remount()
     await settlePlugin()
 
-    // The reload released that presentation, so the wire collapses back to the
-    // deployment's PTC transport: one name, and it is a capability.
-    await waitUntil('the wire to collapse back to the PTC transport', async () => {
-      const names = await wireTools(h.ctx, captain)
-      return names.length === 1 && names[0] === 'run_code'
-    })
+    // A reload releases the PLUGIN, but no longer the native presentation: the
+    // declaration is bound to the Agent's own lifetime, because releasing an
+    // Agent-scoped executor leaves the Runtime's tombstone behind and the
+    // Session then rejects every tool instead of restoring the deployment
+    // default. So the wire keeps the native surface the Team installed.
     const wire = await wireTools(h.ctx, captain)
-    expect(wire).toEqual(['run_code'])
+    expect(wire).toContain(ALLOWED_TOOL)
+    // `run_code` is what the reloaded Session must NOT get back: it is the
+    // general-purpose transport a custom Team policy denies outright.
+    expect(wire).not.toContain('run_code')
+    // The quarantined captain is refused with the quarantine reason, not with a
+    // missing executor.
     await waitForRefusal(h, captain, 'run_code', UNRESTORABLE, { code: 'return 1', description: 'probe' })
     const direct = await call(h, captain, 'run_code', { code: 'return 1', description: 'probe' })
     expect(direct.isError).toBe(true)
+    expect(direct.text).toContain(UNRESTORABLE)
 
-    // The ten exempted names are not on the wire, and the collapsed surface
-    // refuses a direct call to any of them as a dispatch error rather than
-    // letting the exemption through:
-    for (const name of ['get_team_preset', 'send_message', 'list_agents', ALLOWED_TOOL] as const) {
-      expect(wire, name).not.toContain(name)
-      const unreachable = await call(h, captain, name)
-      expect(unreachable.isError, name).toBe(true)
-      expect(unreachable.text, name).toContain('only `run_code` is callable directly')
+    // The ten exempted names stay callable, which is the recovery channel the
+    // refusal text recommends: the fold no longer costs the captain its only way
+    // out of the freeze.
+    for (const name of ['get_team_preset', 'send_message', 'list_agents'] as const) {
+      const reachable = await call(h, captain, name)
+      expect(reachable.isError, name).toBe(false)
     }
-    // So this quarantined captain has exactly zero usable tools: the recovery
-    // channel the refusal text recommends is not reachable from the model at
-    // all. This is a denial, never a widening, but it is a real limit on S2.
-    expect((await applied(h.ctx, captain)).tools).toContain('get_team_preset')
+    // A capability outside the recovery set is still denied.
+    expect((await call(h, captain, ALLOWED_TOOL)).isError).toBe(true)
 
     await h.release()
     await waitForAllowed(h, captain, ALLOWED_TOOL)
@@ -722,6 +736,10 @@ describe('fork and child lineage under a quarantined captain', () => {
 
     // A child created now would run under no provable policy at all, so the
     // creation transaction is vetoed instead of quarantining after the fact.
+    // `agents.create` performs an Agent-scope tool registration as part of its
+    // own activation, so leaving its rejection unobserved would surface as an
+    // unrelated unhandled error in a later case; settling it here keeps this
+    // case's verdict about the veto and nothing else.
     await expect(h.ctx.agents.create({
       sessionId: SessionId('member-child'),
       parentAgent: captain,
@@ -1011,9 +1029,9 @@ describe('RESIDUAL WINDOW: a Team task whose captain never assembled a request',
     await h.release()
   })
 
-  it('hands the same running task the general-purpose code transport its Team denied', async () => {
-    // The same residual window in a deployment that runs the PTC presentation,
-    // where `run_code` is the only wire tool: the capability it reopens is
+  it('keeps the general-purpose code transport denied to the same running task', async () => {
+    // The same shape in a deployment that runs the PTC presentation, where
+    // `run_code` is the only wire tool: the capability it would reopen is
     // arbitrary code, which a custom Team policy denies outright.
     const h = await setup({ teams: [definition('A', 'alpha')], selections: SELECTED, ptc: true })
     const captain = await h.create('s1')
@@ -1028,13 +1046,16 @@ describe('RESIDUAL WINDOW: a Team task whose captain never assembled a request',
     await h.remount()
     await settlePlugin()
 
-    // KNOWN RESIDUAL WINDOW — the widened capability here is code execution.
-    // The call is no longer refused by any Team policy or quarantine; only this
-    // harness having no working directory stops the body.
-    expect(await wireTools(h.ctx, captain)).toContain('run_code')
+    // The residual window no longer reopens the code-execution capability: the
+    // native declaration belongs to the Agent, so a reload cannot fall back to
+    // the deployment's PTC transport and `run_code` never reappears on the wire.
+    expect(await wireTools(h.ctx, captain)).not.toContain('run_code')
     const after = await call(h, captain, 'run_code', { code: 'return 1', description: 'probe' })
-    expect(after.text).not.toContain('deny general-purpose run_code')
-    expect(after.text).not.toContain(UNRESTORABLE)
+    expect(after.isError).toBe(true)
+    // Refused because the native executor does not register the transport at
+    // all, which is strictly stronger than the old policy-text denial: there is
+    // no `run_code` body to reach, with or without a Team in force.
+    expect(after.text).toContain('unknown tool "run_code"')
 
     h.teammates('s1', [teammate('inactive')])
     h.rosterEvent(captain)

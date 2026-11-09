@@ -75,10 +75,10 @@ export interface GuardRole {
      *
      * `self` (the default) keeps the historical best-effort declaration for
      * callers that install a legacy child policy with nothing else to prepare it.
-     * `caller` means the caller already established a native presentation through
-     * {@link prepareNativePresentation} and must not have it declared twice: an
-     * Agent scope accepts exactly one declaration, so a second one would throw
-     * while the first is still in effect.
+     * `caller` means the caller already established a native executor through
+     * {@link prepareNativePresentation} and owns that declaration: an Agent scope
+     * accepts exactly one LIVE executor, so a second declaration by this guard
+     * would throw while the caller's is still in effect.
      */
     readonly presentation?: 'self' | 'caller';
 }

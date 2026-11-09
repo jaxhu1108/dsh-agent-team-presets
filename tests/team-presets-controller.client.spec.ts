@@ -680,6 +680,7 @@ describe('staged edits', () => {
     const { controller } = staged()
     const id = controller.createTeam()
     expect(id).toBe('team-2')
+    expect(controller.store.getSnapshot().teams[1]?.personnelControl).toBe(false)
     expect(controller.store.getSnapshot().dirty).toBe(true)
     expect(controller.store.getSnapshot().teams.map(entry => entry.id)).toEqual(['team-1', 'team-2'])
     controller.dispose()
@@ -879,10 +880,13 @@ describe('writing staged Teams', () => {
     const form = scriptedForm({ value: SECTION })
     const controller = new TeamPresetsController(scriptedContext(form.form))
     controller.createTeam()
+    controller.patchTeam(1, { personnelControl: true })
     await controller.save()
     expect(form.mutations).toHaveLength(1)
     expect(form.mutations[0]?.revision).toBe(4)
-    expect(form.mutations[0]?.ops[0]).toMatchObject({ op: 'set', path: ['teams'] })
+    expect(form.mutations[0]?.ops[0]).toMatchObject({
+      op: 'set', path: ['teams'], value: [{ personnelControl: false }, { personnelControl: true }],
+    })
     expect(controller.store.getSnapshot()).toMatchObject({ dirty: false, saving: false, failed: false })
     controller.dispose()
   })
@@ -1394,7 +1398,7 @@ describe('external Team updates behind an open draft', () => {
     form.replace({ value: { teams: [team('team-1', 'HOST_A')], selections: [] }, revision: 2 })
     form.publishChange()
     expect(controller.store.getSnapshot().teams).toEqual([{
-      id: 'team-1', name: '', description: '', captain: emptyCaptainPreset(), members: [],
+      id: 'team-1', name: '', description: '', captain: emptyCaptainPreset(), members: [], personnelControl: false,
     }])
     expect(controller.store.getSnapshot().dirty).toBe(true)
     controller.dispose()
@@ -1723,6 +1727,7 @@ describe('sharing one Team as a document', () => {
         ...EMPTY_AGENT, name: 'reviewer', color: '#2fbf71', description: 'checks diffs',
         systemPrompt: 'You review.', provider: 'deepseek', model: 'deepseek-chat', reasoningEffort: 'high',
       }],
+      personnelControl: true,
     }
   }
 
@@ -1763,7 +1768,9 @@ describe('sharing one Team as a document', () => {
     const text = controller.exportTeam(0)
     expect(text).toBeDefined()
     const parsed = JSON.parse(text!) as { team: { name: string; captain: { name: string }; members: { name: string }[] } }
+    expect(parsed.version).toBe(3)
     expect(parsed.team.name).toBe('Review team')
+    expect(parsed.team.personnelControl).toBe(true)
     expect(parsed.team.captain.name).toBe('team-lead')
     expect(parsed.team.members[0]?.name).toBe('reviewer')
     expect(text).not.toContain('deepseek')
@@ -1772,10 +1779,38 @@ describe('sharing one Team as a document', () => {
     controller.dispose()
   })
 
+  it('exports an explicit false and reads older documents as disabled', () => {
+    const controller = controllerFor([{ ...shareable(), personnelControl: false }]).controller
+    const text = controller.exportTeam(0)!
+    expect(JSON.parse(text).team.personnelControl).toBe(false)
+    expect(planOf(controller, text).transfer.team.personnelControl).toBe(false)
+
+    const oldText = serializeTeamPreset({ ...shareable(), id: 'old', name: 'Legacy team' })
+    expect(planOf(controller, oldText).transfer.team.personnelControl).toBe(false)
+    controller.dispose()
+  })
+
+  it('round-trips personnel control through file export and a new-Team import', () => {
+    const source = controllerFor([shareable()])
+    const text = source.controller.exportTeam(0)!
+    const destination = controllerFor([{ ...shareable(), id: 'team-9', name: 'Existing team', personnelControl: false }])
+    const plan = planOf(destination.controller, text)
+
+    expect(plan.transfer.version).toBe(3)
+    expect(plan.transfer.team.personnelControl).toBe(true)
+    const id = destination.controller.applyImport(plan, {
+      team: 'rename', teamName: 'Imported review', captain: 'replace', members: {},
+    })
+    expect(destination.controller.store.getSnapshot().teams.find(team => team.id === id)?.personnelControl).toBe(true)
+    source.controller.dispose()
+    destination.controller.dispose()
+  })
+
   it('stages a free document as a new Team without writing the stored ones', () => {
     const { form, controller } = controllerFor([shareable()])
     const free = serializeTeamPreset({ ...shareable(), id: 'team-9', name: 'Build team' })
     const plan = planOf(controller, free)
+    expect(plan.transfer.team.personnelControl).toBe(false)
     expect(plan.targetIndex).toBeUndefined()
     expect(controller.applyImport(plan, defaultImportResolution(plan))).toBe('team-2')
     expect(controller.store.getSnapshot().teams.map(team => team.name)).toEqual(['Review team', 'Build team'])
@@ -1822,16 +1857,20 @@ describe('sharing one Team as a document', () => {
   })
 
   it('overwrites v2 metadata and preserves it for a legacy v1 import', () => {
-    const { controller } = controllerFor([{ ...shareable(), metadata: { summary: 'local' } }])
+    const { controller } = controllerFor([{ ...shareable(), personnelControl: true, metadata: { summary: 'local' } }])
     const plan = planOf(controller, serializeTeamPreset({ ...incoming(), metadata: { summary: 'imported', tags: ['new'] } }))
     controller.applyImport(plan, { team: 'replace', teamName: '', captain: 'replace', members: {} })
     expect(controller.store.getSnapshot().teams[0]?.metadata).toEqual({ summary: 'imported', tags: ['new'] })
+    expect(controller.store.getSnapshot().teams[0]?.personnelControl).toBe(false)
     const legacy = JSON.parse(serializeTeamPreset(incoming()))
     legacy.version = 1
     delete legacy.team.metadata
     const oldPlan = planOf(controller, JSON.stringify(legacy))
+    expect(oldPlan.transfer.team.personnelControl).toBe(false)
+    controller.patchTeam(0, { personnelControl: true })
     controller.applyImport(oldPlan, { team: 'replace', teamName: '', captain: 'replace', members: {} })
     expect(controller.store.getSnapshot().teams[0]?.metadata?.summary).toBe('imported')
+    expect(controller.store.getSnapshot().teams[0]?.personnelControl).toBe(false)
     controller.dispose()
   })
 
@@ -1866,6 +1905,7 @@ describe('sharing one Team as a document', () => {
     expect(teams.map(team => team.name)).toEqual(['Review team', 'Review team 2'])
     expect(teams[1]?.members.map(member => member.name)).toEqual(['reviewer', 'builder'])
     expect(teams[1]?.members[0]).toMatchObject({ provider: '', model: '' })
+    expect(teams[1]?.personnelControl).toBe(false)
     controller.dispose()
   })
 

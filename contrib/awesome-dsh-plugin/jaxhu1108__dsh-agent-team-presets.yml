@@ -1,5 +1,5 @@
-url: https://github.com/bloodarea/dsh-agent-team-presets
-name: bloodarea/dsh-agent-team-presets
+url: https://github.com/jaxhu1108/dsh-agent-team-presets
+name: jaxhu1108/dsh-agent-team-presets
 category: workflow
 description:
   en: 'Reusable Agent Team presets for DeepSeek Harness: a Settings page stores named Teams — a captain with its own prompt and tool allow-list, plus members carrying their own provider/model route, reasoning effort, prompt and tools — and a composer control applies one Team to the current Session, installing the captain prompt and registering the spawn_team_member, get_team_preset and update_team_preset tools.'

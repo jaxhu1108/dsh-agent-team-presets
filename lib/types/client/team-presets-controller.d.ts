@@ -5,7 +5,8 @@
 import type { Context } from '@deepseek-ai/cordis';
 import type { ModelCatalog } from '@deepseek-ai/dsh-api-remotes/client';
 import { type SnapshotStore } from '@deepseek-ai/dsh-client-store';
-import type { TeamPresetImportFailure, TeamPresetTransfer } from '../preset-transfer.ts';
+import type { TeamPresetImportFailure } from '../preset-transfer.ts';
+import type { TeamPresetFileTransfer } from './preset-file.ts';
 import type { TeamAgentPreset, TeamCaptainPreset, TeamCategory, TeamCategoryAssignment, TeamExecutionRow, TeamExecutionState, TeamPreset, ToolChoice } from '../types.ts';
 /**
  * Loader entry id of the Host row that owns the Team preset namespace. Spelled
@@ -208,7 +209,7 @@ export type DefaultsRestore = 'restored' | 'unchanged';
 /** What one import will do, once the document was read and its collisions are known. */
 export type TeamPresetImportPlan = {
     /** The document being imported. */
-    readonly transfer: TeamPresetTransfer;
+    readonly transfer: TeamPresetFileTransfer;
     /** Index of the Team the document would overwrite, or undefined when it adds one. */
     readonly targetIndex: number | undefined;
     /** Display name of that Team, for the dialog that resolves the collision. */

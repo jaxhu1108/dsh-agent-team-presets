@@ -26,6 +26,7 @@ const REVIEWS: TeamPreset = {
   ...team([slot({ id: 'reviewer-role', name: 'Reviewer', description: 'checks diffs', systemPrompt: 'You review diffs.' })], {
     description: 'leads the release review',
   }),
+  personnelControl: true,
   name: 'Reviews',
   description: 'release reviews',
 }
@@ -85,6 +86,12 @@ async function setup(options: {
   approval?: 'allowed-once' | 'rejected' | 'unavailable' | 'cancelled'
   realApprovalPolicy?: 'ask' | 'never'
   noApprovalService?: boolean
+  /**
+   * The Session's sandbox mode, as the sandboxPolicy service would resolve it.
+   * Omitted means "no sandboxPolicy service", which the writer treats as
+   * authorised; 'read-only' is the mode that must refuse a roster edit.
+   */
+  sandboxMode?: 'read-only' | 'workspace-write' | 'danger-full-access'
 } = {}): Promise<Harness> {
   const ctx = new Context()
   contexts.push(ctx)
@@ -104,6 +111,10 @@ async function setup(options: {
     ],
   })
 
+  if (options.sandboxMode !== undefined) {
+    const mode = options.sandboxMode
+    ctx.provide('sandboxPolicy', { resolve: () => ({ mode }) })
+  }
   const teamsRef = volatileRef(options.teams ?? [])
   const selectionsRef = volatileRef(options.selections ?? [])
   const writes: RecordedWrite[] = []
@@ -166,11 +177,31 @@ async function setup(options: {
   }
 }
 
-/** Execute one tool call against a caller outside any model turn. */
+/**
+ * Execute one tool call against a caller outside any model turn.
+ *
+ * DSH rc.3 dispatches a BATCH of tool calls and answers with a batch result, so
+ * the single-call shape this suite was written against no longer exists. The
+ * helper keeps its old one-result signature by sending a one-call batch and
+ * unwrapping the single outcome, which is what the callers mean by "the result".
+ */
 async function call(ctx: Context, agent: Agent, name: string, args: object) {
-  return await ctx.tools.execute({
-    callId: ToolCallId(`${name}-call`), name, arguments: args, agent, signal: new AbortController().signal,
+  const batch = await ctx.tools.execute({
+    calls: [{
+      type: 'tool-call',
+      id: ToolCallId(`${name}-call`),
+      name,
+      arguments: JSON.stringify(args),
+    }],
+    agent,
+    signal: new AbortController().signal,
   })
+  const settlement = batch.results[0]
+  if (settlement === undefined) throw new Error(`the ${name} batch settled no result`)
+  // rc.3 nests the outcome under `result`: a ToolCallResult pairs the call id
+  // with its ToolExecutionResult, so the content lives one level deeper than
+  // the pre-batch shape this suite was written against.
+  return settlement.result
 }
 
 /** Concatenated model-facing text of one tool result. */
@@ -232,15 +263,36 @@ describe('get_team_preset', () => {
     const value = payload(await call(h.ctx, h.agent, 'get_team_preset', {}))
     expect(value.status).toBe('ready')
     expect(value.selectedTeamId).toBe('team-1')
-    expect(value.team).toEqual({
-      id: 'team-1',
-      name: 'Reviews',
-      description: 'release reviews',
-      captainName: 'captain',
-      captainDescription: 'leads the release review',
-      captainSystemPrompt: 'Captain prompt',
-      members: [{ member: 'reviewer', name: 'Reviewer', description: 'checks diffs', systemPrompt: 'You review diffs.' }],
-    })
+    const reported = value.team as Record<string, unknown>
+    // Assert the FIELDS the captain needs, not an exact object shape: an exact
+    // match makes every added field a test failure, which is how this case
+    // silently stopped covering the route and the personnel switch.
+    expect(reported['id']).toBe('team-1')
+    expect(reported['name']).toBe('Reviews')
+    expect(reported['description']).toBe('release reviews')
+    expect(reported['captainName']).toBe('captain')
+    expect(reported['captainDescription']).toBe('leads the release review')
+    expect(reported['captainSystemPrompt']).toBe('Captain prompt')
+    // The switch is what authorises a roster edit, so the captain must be able
+    // to read it; it is on for this fixture.
+    expect(reported['personnelControl']).toBe(true)
+    expect(reported['members']).toEqual([
+      {
+        member: 'reviewer',
+        name: 'Reviewer',
+        description: 'checks diffs',
+        systemPrompt: 'You review diffs.',
+        // Empty strings mean "inherit the captain's route", and the captain has
+        // to see that explicitly rather than infer it from missing keys.
+        provider: '',
+        model: '',
+        reasoningEffort: '',
+        // The captain must be able to read the tool policy it may change, so
+        // "inherits the default" is reported rather than inferred from a hole.
+        toolMode: 'all',
+        tools: [],
+      },
+    ])
   })
 
   it('resolves a Team by configured name even when another Team is selected', async () => {
@@ -319,6 +371,57 @@ describe('update_team_preset writes', () => {
     expect(h.results[0]?.isError).toBe(true)
     expect(h.results[0]?.text).toContain('not approved')
   })
+  it('refuses a roster edit at the read-only permission level and writes nothing', async () => {
+    const h = await setup({ teams: [REVIEWS],
+      selections: [{ sessionId: 's1', teamId: 'team-1' }],
+      sandboxMode: 'read-only',
+      script: [toolCallResponse('edit-member-readonly', 'update_team_preset', {
+        revision: 0,
+        members: [{ member: 'Reviewer', reasoning_effort: 'low' }],
+      }), textResponse('done')] })
+    await runEditTurn(h)
+    // The flag is on and the edit is well formed; only the permission level refuses it.
+    expect(h.writes).toHaveLength(0)
+    expect(h.results[0]?.isError).toBe(true)
+    expect(h.results[0]?.text).toContain('read-only permission level')
+    expect(h.revision()).toBe(0)
+  })
+
+  it('allows the same roster edit at every permission level above read-only, without approval', async () => {
+    for (const mode of ['workspace-write', 'danger-full-access'] as const) {
+      const h = await setup({ teams: [REVIEWS],
+        selections: [{ sessionId: 's1', teamId: 'team-1' }],
+        sandboxMode: mode,
+        // Approval would refuse the write; the roster path must not consult it at all.
+        approval: 'rejected',
+        script: [toolCallResponse(`edit-member-${mode}`, 'update_team_preset', {
+          revision: 0,
+          members: [{ member: 'Reviewer', reasoning_effort: 'low' }],
+        }), textResponse('done')] })
+      await runEditTurn(h)
+      expect(h.writes).toHaveLength(1)
+      const value = JSON.parse(h.results[0]?.text ?? '{}') as { status: string; changed: string[] }
+      expect(value.status).toBe('updated')
+      // The reported path is keyed by the member's NAME, not its role id.
+      expect(value.changed).toContain('member:reviewer.reasoningEffort')
+      expect(h.results[0]?.isError).toBe(false)
+    }
+  })
+
+  it('still requires approval for shared system text at a writable permission level', async () => {
+    const h = await setup({ teams: [REVIEWS],
+      selections: [{ sessionId: 's1', teamId: 'team-1' }],
+      sandboxMode: 'danger-full-access',
+      approval: 'rejected',
+      script: [toolCallResponse('edit-purpose', 'update_team_preset', {
+        revision: 0, team_description: 'silently rewritten purpose',
+      }), textResponse('done')] })
+    await runEditTurn(h)
+    expect(h.writes).toHaveLength(0)
+    expect(h.results[0]?.isError).toBe(true)
+    expect(h.results[0]?.text).toContain('not approved')
+  })
+
   it('applies a user-requested Team description and hot-reloads the captain briefing', async () => {
     const h = await setup({
       teams: [REVIEWS],
@@ -390,6 +493,85 @@ describe('update_team_preset writes', () => {
     expect(h.results[0]?.isError).toBe(true)
     expect(h.results[0]?.text).toContain('revision 7 is stale')
     expect(h.results[0]?.text).toContain('get_team_preset')
+  })
+
+  it('sets an explicit tool allow-list when creating a member', async () => {
+    const h = await setup({
+      teams: [REVIEWS],
+      selections: [{ sessionId: 's1', teamId: 'team-1' }],
+      script: [toolCallResponse('add-scoped', 'update_team_preset', {
+        revision: 0,
+        members: [{ member: 'auditor', name: 'auditor', description: 'audits diffs', tool_mode: 'custom', tools: ['read', 'grep'] }],
+      }), textResponse('done')],
+    })
+    await runEditTurn(h)
+    expect(h.writes.length).toBeGreaterThan(0)
+    const written = h.writes.at(-1)?.teams.find(team => team.id === 'team-1')
+    const created = written?.members.find(member => member.name === 'auditor')
+    // A captain that can choose a member but not what it may do has only
+    // half-staffed the role, which is what this asserts.
+    expect(created?.toolMode).toBe('custom')
+    expect(created?.tools).toEqual(['read', 'grep'])
+  })
+
+  it('refuses custom tool mode with an empty list, because it would deny every tool', async () => {
+    const h = await setup({
+      teams: [REVIEWS],
+      selections: [{ sessionId: 's1', teamId: 'team-1' }],
+      script: [toolCallResponse('add-toolless', 'update_team_preset', {
+        revision: 0,
+        members: [{ member: 'ghost', name: 'ghost', description: 'does nothing', tool_mode: 'custom', tools: [] }],
+      }), textResponse('done')],
+    })
+    await runEditTurn(h)
+    // Nothing is persisted: an empty allow-list is indistinguishable from a
+    // typo, and storing it would silently break the new member.
+    expect(h.writes).toHaveLength(0)
+    expect(h.results[0]?.isError).toBe(true)
+    expect(h.results[0]?.text).toContain('at least one tool name')
+  })
+
+  it('changes an existing member tool policy without touching its route', async () => {
+    const h = await setup({
+      teams: [REVIEWS],
+      selections: [{ sessionId: 's1', teamId: 'team-1' }],
+      script: [toolCallResponse('scoped-edit', 'update_team_preset', {
+        revision: 0,
+        members: [{ member: 'reviewer', tool_mode: 'custom', tools: ['read'] }],
+      }), textResponse('done')],
+    })
+    await runEditTurn(h)
+    expect(h.writes.length).toBeGreaterThan(0)
+    const written = h.writes.at(-1)?.teams.find(team => team.id === 'team-1')
+    const reviewer = written?.members.find(member => member.name === 'Reviewer')
+    expect(reviewer?.toolMode).toBe('custom')
+    expect(reviewer?.tools).toEqual(['read'])
+    // The route is a separate decision and must survive a policy-only edit.
+    expect(reviewer?.provider).toBe('')
+    expect(reviewer?.model).toBe('')
+  })
+
+  it('drops a stale allow-list when a member is switched back to all tools', async () => {
+    const base = {
+      ...REVIEWS,
+      members: [{ ...REVIEWS.members[0]!, toolMode: 'custom' as const, tools: ['read'] }],
+    }
+    const h = await setup({
+      teams: [base],
+      selections: [{ sessionId: 's1', teamId: 'team-1' }],
+      script: [toolCallResponse('widen', 'update_team_preset', {
+        revision: 0,
+        members: [{ member: 'reviewer', tool_mode: 'all' }],
+      }), textResponse('done')],
+    })
+    await runEditTurn(h)
+    expect(h.writes.length).toBeGreaterThan(0)
+    const written = h.writes.at(-1)?.teams.find(team => team.id === 'team-1')
+    const reviewer = written?.members.find(member => member.name === 'Reviewer')
+    expect(reviewer?.toolMode).toBe('all')
+    // Keeping the old list would let a later switch back to custom silently
+    // resurrect a restriction nobody re-chose.
+    expect(reviewer?.tools).toEqual([])
   })
 
   it('refuses an unknown member and names the available targets', async () => {

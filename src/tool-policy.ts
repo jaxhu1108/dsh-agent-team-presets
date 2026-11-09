@@ -6,6 +6,7 @@
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { RUN_CODE_NAME } from '@deepseek-ai/dsh-tools'
 import type { ToolRestriction } from '@deepseek-ai/dsh-tools'
+import { installNativePresentation } from './presentation.ts'
 import { IMPLICIT_TOOLS, SKILL_TOOL_NAME, toolMode } from './presets.ts'
 import type { TeamSlotPreset } from './types.ts'
 
@@ -153,10 +154,10 @@ export interface GuardRole {
    *
    * `self` (the default) keeps the historical best-effort declaration for
    * callers that install a legacy child policy with nothing else to prepare it.
-   * `caller` means the caller already established a native presentation through
-   * {@link prepareNativePresentation} and must not have it declared twice: an
-   * Agent scope accepts exactly one declaration, so a second one would throw
-   * while the first is still in effect.
+   * `caller` means the caller already established a native executor through
+   * {@link prepareNativePresentation} and owns that declaration: an Agent scope
+   * accepts exactly one LIVE executor, so a second declaration by this guard
+   * would throw while the caller's is still in effect.
    */
   readonly presentation?: 'self' | 'caller'
 }
@@ -165,10 +166,13 @@ export interface GuardRole {
 export function guardPolicy(agent: Agent, policy: StrictToolPolicy, role: GuardRole = {}): () => void {
   const member = role.role === 'member'
   const allowed = new Set(policy.allow)
-  let native: (() => void) | undefined
   if (policy.mode === 'custom' && role.presentation !== 'caller') {
-    try { native = agent.ctx.tools.presentAs('native') }
-    catch { /* An exact-Agent presentation exists; guard still denies run_code. */ }
+    // Reuse the Agent-lifetime declaration; this guard never owns or releases it.
+    // Releasing an Agent-scoped executor would leave the Runtime's tombstone in
+    // place, costing the Agent its entire tool surface instead of restoring the
+    // deployment default — see {@link installNativePresentation}.
+    try { installNativePresentation(agent) }
+    catch { /* An exact-Agent executor exists; guard still denies run_code. */ }
   }
   const disposeGuard = agent.ctx.tools.guard(exec => {
     if (exec.name === 'spawn_teammate') {
@@ -200,7 +204,7 @@ export function guardPolicy(agent: Agent, policy: StrictToolPolicy, role: GuardR
     }
     return undefined
   })
-  return () => { disposeGuard(); native?.() }
+  return disposeGuard
 }
 
 /** Old plugin-generated briefing, not merely upstream Team membership. */

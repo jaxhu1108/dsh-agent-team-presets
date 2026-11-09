@@ -403,13 +403,22 @@ async function wireTools(ctx: Context, agent: Agent): Promise<string[]> {
 
 /** Execute one tool as one Agent and report whether it was refused, and why. */
 async function call(h: Harness, agent: Agent, name: string, args: object = {}) {
-  const result = await h.ctx.tools.execute({
-    callId: ToolCallId(`${name}-${Math.random()}`),
-    name,
-    arguments: args,
+  const batch = await h.ctx.tools.execute({
+    calls: [{
+      type: 'tool-call',
+      id: ToolCallId(`${name}-${Math.random()}`),
+      name,
+      arguments: JSON.stringify(args),
+    }],
     agent,
     signal: new AbortController().signal,
   })
+  // rc.3 nests the outcome under `result`: a ToolCallResult pairs the call id
+  // with its ToolExecutionResult, so the content lives one level deeper than
+  // the pre-batch shape this suite was written against.
+  const settlement = batch.results[0]
+  if (settlement === undefined) throw new Error(`the ${name} batch settled no result`)
+  const result = settlement.result
   return {
     isError: result.isError === true,
     text: result.content.flatMap(block => block.type === 'text' && block.text !== undefined ? [block.text] : []).join(''),

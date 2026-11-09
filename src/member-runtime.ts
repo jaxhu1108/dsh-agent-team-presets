@@ -520,16 +520,17 @@ export function installMemberScopes(agent: Agent, record: MemberRecord): () => v
   const disposers: Array<() => unknown> = []
   try {
     if (record.route !== undefined) {
-      disposers.push(installModelSelection(agent.ctx, {
-        current: {
-          provider: record.route.provider,
-          model: record.route.model,
-          ...record.route.reasoningEffort === undefined
-            ? {}
-            : { reasoningEffort: ReasoningEffortId(record.route.reasoningEffort) },
-        },
-        assembled: undefined,
-      }))
+      // The durable form is the selection EVENT: recording it through the Agent
+      // keeps replay, compaction and the model picker on the same value. The
+      // installed projection only re-applies what the session already recorded.
+      agent.model.select({
+        provider: record.route.provider,
+        model: record.route.model,
+        ...record.route.reasoningEffort === undefined
+          ? {}
+          : { reasoningEffort: ReasoningEffortId(record.route.reasoningEffort) },
+      })
+      disposers.push(installModelSelection(agent.ctx))
     }
     if (record.persona.trim() !== '') {
       disposers.push(agent.ctx.systemPrompt.section({

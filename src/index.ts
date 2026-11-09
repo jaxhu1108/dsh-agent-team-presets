@@ -59,10 +59,10 @@ const NAMESPACE = 'agent-team-presets'
 /**
  * Services this plugin reads: the Session agents it composes, the Team service
  * it summons members through, the tool registry its member and preset tools
- * join, the prompt sections its captain adds, the session projections that
- * authenticate a preset write, and the settings document it owns.
+ * join, the prompt sections its captain adds, the Agents service whose turn
+ * boundary authenticates a preset write, and the settings document it owns.
  */
-export const inject = ['agents', 'agentTeams', 'tools', 'systemPrompt', 'sessionProjections', 'settings', 'subagents']
+export const inject = ['agents', 'agentTeams', 'tools', 'systemPrompt', 'settings', 'subagents']
 
 /** Diagnostics prefix for the failures this plugin only reports. */
 const LOG = 'agent-team-presets'
@@ -561,10 +561,12 @@ export function apply(ctx: Context, config: Config): void {
   }
 
   /**
-   * Options that declare a custom Team's native presentation at the Agent scope.
+   * Options carrying a custom Team's already-declared native executor.
    *
-   * The install is part of the application's rollback region: releasing the
-   * application releases the declaration with it.
+   * The preparation step declares the executor to prove the scope accepts it,
+   * then releases the probe so the caller's install is the only live one. The
+   * install re-declares at that point; it is part of the application's rollback
+   * region, so releasing the application releases the declaration with it.
    * @param agent - the Agent the Team is applied to.
    * @param disclosure - locale key of the effective presentation, when it replaced another one.
    * @returns the application options.

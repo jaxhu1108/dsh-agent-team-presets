@@ -316,26 +316,32 @@ async function flush(): Promise<void> {
   await new Promise<void>((resolve) => { setTimeout(resolve, 0) })
 }
 
-/** Execute the member tool as one captain. */
-async function callMemberTool(ctx: Context, agent: Agent, args: object) {
-  return await ctx.tools.execute({
-    callId: ToolCallId('spawn-member'),
-    name: 'spawn_team_member',
-    arguments: args,
+/**
+ * Execute one tool call and return its single settled outcome.
+ *
+ * DSH rc.3 dispatches a BATCH of tool calls, so a call is encoded as a raw
+ * `tool-call` block and its `ToolExecutionResult` comes back one level deeper,
+ * at `results[i].result`.
+ */
+async function callTool(ctx: Context, agent: Agent, name: string, args: object = {}) {
+  const batch = await ctx.tools.execute({
+    calls: [{ type: 'tool-call', id: ToolCallId(`${name}-call`), name, arguments: JSON.stringify(args) }],
     agent,
     signal: new AbortController().signal,
   })
+  const settlement = batch.results[0]
+  if (settlement === undefined) throw new Error(`the ${name} batch settled no result`)
+  return settlement.result
+}
+
+/** Execute the member tool as one captain. */
+async function callMemberTool(ctx: Context, agent: Agent, args: object) {
+  return await callTool(ctx, agent, 'spawn_team_member', args)
 }
 
 /** Execute one preset tool as one captain and read its canonical payload. */
 async function callPresetTool(ctx: Context, agent: Agent, name: string, args: object) {
-  const result = await ctx.tools.execute({
-    callId: ToolCallId(name),
-    name,
-    arguments: args,
-    agent,
-    signal: new AbortController().signal,
-  })
+  const result = await callTool(ctx, agent, name, args)
   return {
     isError: result.isError,
     text: result.content.flatMap(block => block.type === 'text' && block.text !== undefined ? [block.text] : []).join(''),
@@ -629,15 +635,11 @@ describe('the captain tool scope a Team applies', () => {
     const h = await setup({ teams: [definition('A', 'alpha')], selections: SELECTED })
     const captain = await h.create('s1')
 
-    const denied = await h.ctx.tools.execute({
-      callId: ToolCallId('denied'), name: DENIED_TOOL, arguments: {}, agent: captain, signal: new AbortController().signal,
-    })
+    const denied = await callTool(h.ctx, captain, DENIED_TOOL)
     expect(denied.isError).toBe(true)
     expect(resultText(denied)).toContain(DENIED_TOOL)
 
-    const allowed = await h.ctx.tools.execute({
-      callId: ToolCallId('allowed'), name: ALLOWED_TOOL, arguments: {}, agent: captain, signal: new AbortController().signal,
-    })
+    const allowed = await callTool(h.ctx, captain, ALLOWED_TOOL)
     expect(allowed.isError).toBe(false)
   })
 
@@ -650,9 +652,7 @@ describe('the captain tool scope a Team applies', () => {
     expect(warn.mock.calls.map(call => String(call[0])).join('\n')).toContain('was refused')
     expect(h.ctx.tools.get('spawn_team_member', captain)).toBeDefined()
     expect((await applied(h.ctx, captain)).persona).toBe('Captain prompt A')
-    const denied = await h.ctx.tools.execute({
-      callId: ToolCallId('invalid-update-denied'), name: DENIED_TOOL, arguments: {}, agent: captain, signal: new AbortController().signal,
-    })
+    const denied = await callTool(h.ctx, captain, DENIED_TOOL)
     expect(denied.isError).toBe(true)
 
     // Fixing the stored Team restores the Session.
@@ -670,7 +670,7 @@ describe('application lifecycle across status edges', () => {
     const captain = await h.create('s1')
     h.wake(captain)
     h.selections([])
-    const call = () => h.ctx.tools.execute({ callId: ToolCallId('deselect'), name: DENIED_TOOL, arguments: {}, agent: captain, signal: new AbortController().signal })
+    const call = () => callTool(h.ctx, captain, DENIED_TOOL)
     expect((await call()).isError).toBe(true)
     expect(h.ctx.tools.get('get_team_preset', captain)).toBeDefined()
     await h.release()
@@ -684,7 +684,7 @@ describe('application lifecycle across status edges', () => {
   it('quarantines a first invalid application instead of exposing default tools', async () => {
     const h = await setup({ teams: [invalidDefinition('A', 'alpha')], selections: SELECTED })
     const captain = await h.create('s1')
-    const denied = await h.ctx.tools.execute({ callId: ToolCallId('initial-invalid'), name: DENIED_TOOL, arguments: {}, agent: captain, signal: new AbortController().signal })
+    const denied = await callTool(h.ctx, captain, DENIED_TOOL)
     expect(denied.isError).toBe(true)
     // The refusal is the actionable one: the allow-list names a capability this
     // Session cannot reach, and that reason is what the quarantined Session reads.
@@ -693,7 +693,7 @@ describe('application lifecycle across status edges', () => {
     // The quarantine is only released once the replacement application's
     // queued job has installed its tool scope.
     await settlePlugin()
-    const allowed = await h.ctx.tools.execute({ callId: ToolCallId('recovered'), name: ALLOWED_TOOL, arguments: {}, agent: captain, signal: new AbortController().signal })
+    const allowed = await callTool(h.ctx, captain, ALLOWED_TOOL)
     expect(allowed.isError).toBe(false)
   })
 
@@ -702,8 +702,9 @@ describe('application lifecycle across status edges', () => {
     const captain = await h.create('s1')
     const register = vi.spyOn(captain.ctx.tools, 'register').mockImplementationOnce(() => { throw new Error('partial registration failure') })
     h.teams([definition('B', 'beta')])
+    await settlePlugin()
     register.mockRestore()
-    const denied = await h.ctx.tools.execute({ callId: ToolCallId('partial-denied'), name: DENIED_TOOL, arguments: {}, agent: captain, signal: new AbortController().signal })
+    const denied = await callTool(h.ctx, captain, DENIED_TOOL)
     expect(denied.isError).toBe(true)
     expect((await applied(h.ctx, captain)).persona).toBe('Captain prompt A')
   })
@@ -717,7 +718,7 @@ describe('application lifecycle across status edges', () => {
     h.teams([widened])
     await h.fiber.dispose()
     const restarted = await h.ctx.plugin(Object.assign((inner: Context) => { apply(inner, h.config) }, { inject }))
-    const execute = (name: string) => h.ctx.tools.execute({ callId: ToolCallId('busy-reload'), name, arguments: {}, agent: captain, signal: new AbortController().signal })
+    const execute = (name: string) => callTool(h.ctx, captain, name)
     expect((await execute(DENIED_TOOL)).isError).toBe(true)
     expect((await execute(ALLOWED_TOOL)).isError).toBe(true)
     await h.release()
@@ -841,15 +842,9 @@ describe('application lifecycle across status edges', () => {
     // activation that already installed root registrations must not throw here,
     // because those registrations live on `agent.ctx` and would leak.
     const fiber = await ctx.plugin(Object.assign((inner: Context) => { apply(inner, config) }, { inject }))
-    const denied = await ctx.tools.execute({
-      callId: ToolCallId('child-quarantined'), name: DENIED_TOOL, arguments: {}, agent: child,
-      signal: new AbortController().signal,
-    })
+    const denied = await callTool(ctx, child, DENIED_TOOL)
     expect(denied.isError).toBe(true)
-    expect((await ctx.tools.execute({
-      callId: ToolCallId('root-allowed'), name: ALLOWED_TOOL, arguments: {}, agent: root,
-      signal: new AbortController().signal,
-    })).isError).toBe(false)
+    expect((await callTool(ctx, root, ALLOWED_TOOL)).isError).toBe(false)
 
     // The teardown owner must drain every registration the mount installed.
     await fiber.dispose()

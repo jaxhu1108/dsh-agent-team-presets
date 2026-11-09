@@ -53,8 +53,23 @@ function fixtureTool(name: string, execute: () => string) {
   })
 }
 
+/**
+ * Execute one tool call and return its single settled outcome.
+ *
+ * DSH rc.3 dispatches a BATCH of tool calls and answers with a batch result, so
+ * the pre-batch single-call shape this helper used no longer exists. It sends a
+ * one-call batch and unwraps that call's `ToolExecutionResult`, which is what
+ * every caller here means by "the result".
+ */
 async function execute(ctx: Context, agent: Agent, name: string, args: object = {}) {
-  return await ctx.tools.execute({ callId: ToolCallId(`${name}-call`), name, arguments: args, agent, signal })
+  const batch = await ctx.tools.execute({
+    calls: [{ type: 'tool-call', id: ToolCallId(`${name}-call`), name, arguments: JSON.stringify(args) }],
+    agent,
+    signal,
+  })
+  const settlement = batch.results[0]
+  if (settlement === undefined) throw new Error(`the ${name} batch settled no result`)
+  return settlement.result
 }
 
 describe('captain tool permissions', () => {

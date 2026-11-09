@@ -32,7 +32,8 @@ import { bindScopeParent, createScope } from '@deepseek-ai/dsh-scope'
 import { PtcRuntime } from '@deepseek-ai/dsh-ptc-runtime'
 import type { PtcRunRequest, PtcRunSpec, PtcRunResult } from '@deepseek-ai/dsh-ptc-runtime'
 import * as Persona from '@deepseek-ai/dsh-persona'
-import * as Presentation from '@deepseek-ai/dsh-agent-tool-presentation'
+import * as NativeToolExecutor from '@deepseek-ai/dsh-tool-executor-native'
+import * as PtcToolExecutor from '@deepseek-ai/dsh-tool-executor-ptc'
 import { apply, inject } from '../src/index.ts'
 import { MEMBER_FRESH_PROVIDER } from '../src/member-identity.ts'
 import { slot, team } from './fixtures/team-presets.ts'
@@ -84,15 +85,22 @@ function warnings(spy: { mock: { calls: readonly unknown[][] } }): string {
   return spy.mock.calls.map(call => call.map(value => String(value)).join(' ')).join('\n')
 }
 
-/** Execute one tool as one Agent. */
+/**
+ * Execute one tool call and return its single settled outcome.
+ *
+ * DSH rc.3 dispatches a BATCH of tool calls, so a call is encoded as a raw
+ * `tool-call` block and its `ToolExecutionResult` comes back one level deeper,
+ * at `results[i].result`.
+ */
 async function call(ctx: Context, agent: Agent, name: string, args: object = {}) {
-  return ctx.tools.execute({
-    callId: ToolCallId(crypto.randomUUID()),
-    name,
-    arguments: args,
+  const batch = await ctx.tools.execute({
+    calls: [{ type: 'tool-call', id: ToolCallId(crypto.randomUUID()), name, arguments: JSON.stringify(args) }],
     agent,
     signal: new AbortController().signal,
   })
+  const settlement = batch.results[0]
+  if (settlement === undefined) throw new Error(`the ${name} batch settled no result`)
+  return settlement.result
 }
 
 /** Concatenated text of one tool result. */
@@ -409,7 +417,7 @@ class BindingProbeRuntime extends PtcRuntime {
  * Compose one Agent whose tool presentation is declared outside its own scope,
  * the way an official Agent preset declares it.
  * @param root - fixture root for the session log.
- * @param mode - presentation the preset scope declares.
+ * @param mode - executor the preset scope declares.
  * @param exact - whether the Agent's own scope also declares one.
  * @param completePersona - whether the preset scope declares a complete persona.
  * @param foreignComplete - whether a third party declares an unnamed complete section instead.
@@ -417,7 +425,7 @@ class BindingProbeRuntime extends PtcRuntime {
  */
 async function presentationStack(
   root: string,
-  mode: 'native' | 'ptc' | 'both',
+  mode: 'native' | 'ptc',
   exact: boolean,
   completePersona = false,
   foreignComplete = false,
@@ -457,7 +465,10 @@ async function presentationStack(
   await ctx.plugin(Object.assign((owner: Context) => {
     preset = createScope(owner, presetKey) as unknown as { ctx: Context }
   }, { inject: ['tools', 'systemPrompt', 'ptcRuntime'] }))
-  await preset.ctx.plugin(Presentation, { mode })
+  // DSH rc.3 replaced `tools.presentAs(mode)` with an explicit executor per
+  // scope, so the preset scope declares one exactly as the shipped
+  // `agent-tool-presentation` compatibility plugin does.
+  await preset.ctx.plugin(mode === 'native' ? NativeToolExecutor : PtcToolExecutor)
   if (completePersona) {
     await preset.ctx.plugin(Persona, {
       prefix: 'MINIMAL_COMPLETE_PERSONA', complete: true, includeRuntimeContext: false,
@@ -467,7 +478,9 @@ async function presentationStack(
     preset.ctx.systemPrompt.section({ name: 'third-party:complete', order: 0, text: 'FOREIGN_COMPLETE', complete: true })
   }
   bindScopeParent(agent, presetKey)
-  if (exact) agent.ctx.tools.presentAs(mode)
+  // An exact-Agent declaration is the same call; a scope accepts only one LIVE
+  // executor, which is what makes the refusal case below reachable.
+  if (exact) await agent.ctx.plugin(mode === 'native' ? NativeToolExecutor : PtcToolExecutor)
   return { ctx, agent, bodies }
 }
 

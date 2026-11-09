@@ -4,6 +4,7 @@ import { Context } from '@deepseek-ai/cordis'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { mountAgentLoopTestDependencies } from '@deepseek-ai/dsh-agent-loop-testkit'
+import { NativeToolExecutor } from '@deepseek-ai/dsh-tool-executor-native'
 import { createScope } from '@deepseek-ai/dsh-scope'
 import { ReasoningEffortId, ToolCallId } from '@deepseek-ai/dsh-llm'
 import type { GenerateOptions } from '@deepseek-ai/dsh-llm'
@@ -40,8 +41,16 @@ afterEach(async () => {
     await rm(absolute, { recursive: true, force: true })
   }
 })
+/** Execute one tool call as one Agent, through the 0.2.1 batch API. */
 async function call(ctx: Context, agent: Agent, name: string, args: object = {}) {
-  return ctx.tools.execute({ callId: ToolCallId(crypto.randomUUID()), name, arguments: args, agent, signal: new AbortController().signal })
+  const batch = await ctx.tools.execute({
+    calls: [{ type: 'tool-call', id: ToolCallId(`${name}-call`), name, arguments: JSON.stringify(args) }],
+    agent,
+    signal: new AbortController().signal,
+  })
+  const settlement = batch.results[0]
+  if (settlement === undefined) throw new Error(`the ${name} batch settled no result`)
+  return settlement.result
 }
 async function base(script?: ConstructorParameters<typeof MockAdapter>[0], options: { workingDirectory?: boolean } = {}) {
   const ctx = new Context()
@@ -151,7 +160,10 @@ describe('strict capability execution', () => {
     for (const name of ['spawn_teammate', 'own_write', 'subagent_alias']) handle.agent.ctx.tools.register({
       name, description: name, parameters: {}, output: { schema: { type: 'string' }, render: () => [] }, execute: body,
     })
-    handle.agent.ctx.tools.presentAs('native') // Existing exact-Agent presentation is valid.
+    // 0.2.1 replaced `presentAs('native')` with an explicit executor declaration:
+    // an exact-Agent native presentation that is already in place is valid, and a
+    // custom Team application must not need to add a second one.
+    handle.agent.ctx.tools.setExecutor(new NativeToolExecutor(handle.agent.ctx))
     handle.agent.ctx.on('tools/pre-execute', async () => ({ kind: 'allow' }))
     const application = applyTeamToAgent(ctx, handle.agent, team([], { toolMode: 'custom', tools: [] }), { fresh: 'spawn', fork: 'fork' })
     expect((await call(ctx, handle.agent, 'spawn_teammate')).isError).toBe(true)

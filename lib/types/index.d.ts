@@ -26,8 +26,8 @@ export declare const name = "agent-team-presets";
 /**
  * Services this plugin reads: the Session agents it composes, the Team service
  * it summons members through, the tool registry its member and preset tools
- * join, the prompt sections its captain adds, the session projections that
- * authenticate a preset write, and the settings document it owns.
+ * join, the prompt sections its captain adds, the Agents service whose turn
+ * boundary authenticates a preset write, and the settings document it owns.
  */
 export declare const inject: string[];
 /**

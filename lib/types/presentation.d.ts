@@ -1,19 +1,20 @@
 /**
  * Tool-presentation preparation for one Team application.
  *
- * An official Agent preset declares its tool presentation for its own scope:
- * `standard` and `cordis` stay native, `ptc` declares `presentAs('ptc')`. A
- * strict custom Team policy has to reach the tools it allows, and the shipped
- * Node PTC transport can import `fs`/`child_process` outside the tool SDK, so a
- * custom Team is only ever applied with a native presentation of its own.
+ * A tool executor is declared per scope through `tools.setExecutor()`: an
+ * official Agent preset either mounts the native executor or the PTC one, and a
+ * strict custom Team policy has to reach the tools it allows. The shipped Node
+ * PTC transport can import `fs`/`child_process` outside the tool SDK, so a
+ * custom Team is only ever applied with a native executor of its own.
  *
  * That decision is made here through public APIs only: the effective wire is
- * read with `systemPrompt.assemble()`, and a native declaration is attempted
- * rather than assumed. The three outcomes are kept apart, because they need
- * different answers — an already-native surface needs nothing, an ancestor PTC
- * surface is shadowed by our own Agent-scoped declaration, and a presentation
- * an exact-Agent scope already declared cannot be replaced and must refuse the
- * application instead of silently running a surface the policy cannot govern.
+ * read with `systemPrompt.assemble()`, and a native executor is declared and
+ * then released as a probe rather than assumed. The three outcomes are kept
+ * apart, because they need different answers — an already-native surface needs
+ * nothing, an ancestor PTC surface is shadowed by our own Agent-scoped
+ * declaration, and a transport an exact-Agent scope already declared cannot be
+ * replaced, so the application is refused instead of silently running a surface
+ * the policy cannot govern.
  *
  * @module dsh-agent-team-presets/presentation
  */
@@ -82,20 +83,38 @@ export declare const PTC_OVERRIDDEN_DISCLOSURE = "presentation.ptcOverridden";
  *
  * The read of the wire happens before any declaration is attempted, and the
  * probe declaration is released immediately, so the caller's real registration
- * is the only one in effect and is never blocked by this probe.
+ * is the only one in effect and is never blocked by this probe. Releasing is
+ * sufficient because the executor slot rejects only a LIVE competing
+ * declaration: once the probe's disposer runs, the scope accepts the caller's
+ * own.
  * @param agent - the Agent the Team is being applied to.
  * @returns the typed preparation result.
  */
 export declare function prepareNativePresentation(agent: Agent): Promise<NativePresentation>;
 /**
- * Declare the native presentation at the Agent's own scope.
+ * Declare the native presentation at the Agent's own scope, once per Agent.
  *
- * Separate from {@link prepareNativePresentation} so the caller installs it
- * inside its own rollback region: a throw here rolls back the whole
- * application instead of leaving a partially applied policy.
+ * The declaration is bound to the **Agent's** lifetime, not to the Team
+ * application that asked for it. That is not a refinement — it is required for
+ * the Agent to keep working at all:
+ *
+ * `tools.setExecutor()` documents that unloading a contribution "leaves the
+ * selection unavailable until it is replaced", and the Runtime keeps the
+ * released slot as a tombstone so that a program cannot silently fall through
+ * to a different executor. A released Agent-scope declaration therefore does
+ * not restore the deployment default; it makes every later call from that Agent
+ * reject with `ToolExecutorUnavailableError`. Releasing on Team change, on a
+ * quarantine, or on an HMR remount would take the Session down with it — its
+ * own recovery channel included.
+ *
+ * Re-declaring does recover such a scope, but only while this plugin is mounted
+ * to do it. Keeping the declaration alive for as long as the Agent exists is
+ * the only arrangement that survives every unload path, so the disposer is
+ * registered on `agent.ctx` and returns a no-op to callers instead.
+ *
  * @param agent - the Agent the Team is being applied to.
- * @returns the disposer releasing the declaration.
- * @throws when the scope already declares another presentation.
+ * @returns a no-op; the declaration lives and dies with the Agent.
+ * @throws when the scope already declares a different executor.
  */
 export declare function installNativePresentation(agent: Agent): () => void;
 /** What the deployment's own persona slot contributes before this plugin applies a Team. */

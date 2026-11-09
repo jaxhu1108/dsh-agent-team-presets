@@ -61,6 +61,10 @@
     "src/client/TeamAgentView.tsx",
     "src/client/TeamImportDialog.tsx",
     "src/client/TeamPresetsSection.tsx",
-    "src/client/ComposerTeamSelect.tsx"
+    "src/client/ComposerTeamSelect.tsx",
+    "src/client/TeamSkillsView.tsx",
+    "src/client/team-grouping.ts",
+    "src/client/team-metadata.ts",
+    "src/client/team-skills-controller.ts"
   ]
 }

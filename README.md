@@ -1,457 +1,483 @@
 # dsh-agent-team-presets
 
-<img src="banner.png" alt="Reusable Agent Team presets for DeepSeek Harness" width="100%">
+<img src="banner_zh.png" alt="为 DeepSeek Runtime 配置可复用的智能体团队预设" width="100%">
 
-*Concept illustration. See [Screenshots](#screenshots) for the plugin interface; the captain uses the conversation's selected model.*
+*横幅为概念示意，实际界面见[界面预览](#screenshots)。队长使用当前会话选择的模型。*
 
-English | [中文](<README.zh.md>)
+中文 | [English](<README.en.md>)
 
-> **Community plugin v0.1.8** · [Release](https://github.com/bloodarea/dsh-agent-team-presets/releases/tag/v0.1.8)
+> **版本 v0.2.0** · 适配 DeepSeek Runtime `0.2.1-rc.2` ~ `0.2.1-rc.3`
 >
-> Requires a compatible DeepSeek Harness deployment with Agent Teams enabled. This version supports DSH rc.2 and 0.2.1-rc.2 APIs; see [Requirements](#requirements). Prebuilt artifacts are included, so installation does not require a source build.
+> 这是一个 **DSH 插件**：给你的 DeepSeek Runtime 加一个可视化的「智能体团队预设」管理器。配好一套团队，从输入区一键选用，队长就能带着队员干活。
+>
+> **仓库已包含预构建产物**，安装不需要编译源码。
 
-<a id="project-introduction"></a>
-## Overview
+---
 
-**dsh-agent-team-presets** is a visual Team preset and private skill manager for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness). Configure a Team once, assign per-agent isolated skills, then select it from the conversation composer whenever you need it.
+## 这个插件解决什么问题
 
-A Team contains a **captain** and any number of **member roles**:
+DeepSeek Runtime 原生就有 Agent Teams（队长 + 队员 + 共享任务板 + 消息协作）。但在它自带的版本里，**"用哪套团队、每个角色是什么设定"这件事全靠你每次现场描述**。
 
-- The captain uses the conversation's selected model, with its own role description, system prompt, and tool policy.
-- Each member can have an independent provider, model, reasoning effort, system prompt, tool policy, and assigned Team Skills.
-- The captain summons members through `spawn_team_member`; native Agent Teams provides messaging, the shared task board, and runtime coordination.
+本插件补上这一层：
 
-This is a community plugin, not the Harness's bundled `@deepseek-ai/dsh-experimental-agent-team-presets` development package.
+| 你的痛点 | 本插件怎么解决 |
+|---|---|
+| 每次都要重新描述一遍角色分工 | 团队存成具名预设，一键选用，反复复用 |
+| 一个团队里想按任务用不同模型 | 每个成员独立配 provider / 模型 / 思考强度，队长仍用你当前会话的模型 |
+| 某个角色权限太大或太小 | 队长和每个成员各带独立的工具白名单 |
+| 技能一注册就全局可见，谁都看得到 | 私有 Team Skill 库，技能**只在被分配的那个角色**的作用域里注册 |
+| 想改个队员设定要跑去设置页 | 打开「队长人事权限」，让队长自己增删改队员（v0.2.0 新增） |
 
-<a id="why-this-plugin"></a>
-## Why this plugin?
+**核心分工**：原生 Agent Teams 管运行时协作；本插件管团队和技能的配置、隔离、复用。
 
-DeepSeek Harness already ships Agent Teams with multi-agent collaboration. In the Harness versions this plugin supports, per-Team configuration, skill isolation, and reuse are still left to the user, which is what this plugin addresses:
+---
 
-- **Teams are hard to reuse.** In those versions, native teams focus on runtime creation and collaboration, with no visual preset management; this plugin saves, duplicates, categorizes, and reuses named presets.
-- **Role setup is repetitive.** Each role's name, description, system prompt, and tool policies are configured once instead of re-described every time.
-- **Splitting work across models is awkward.** Every member picks its own model and reasoning effort, so one Team combines models by task, while the captain keeps leading on the Session's model.
-- **Tool permissions have no fine-grained entry point.** In those versions the native tool surface offers no per-role allow-list; here the captain and each member carry their own, so roles differ in what they may use.
-- **Skills lack per-agent scope isolation.** Shipped or user skills are typically registered globally, making all skills visible to every agent; this plugin provides a private Team Skill library where skills are discovered **only** by the specific Agent they are assigned to.
-- **Switching teams is inconvenient.** Pick a preset Team directly from the composer instead of rebuilding roles by hand.
+## 环境要求
 
-**Design principle:** native Agent Teams owns collaboration at runtime; this plugin owns configuring, managing, isolating, and reusing teams and their skills.
+装之前先确认这三条，缺一条都装不上或跑不起来。
 
-<a id="features"></a>
-## Features
+### 1. DSH 版本
 
-- **Reusable Teams:** create, duplicate, edit, select, and delete named presets.
-- **Per-member model routes:** assign models and reasoning effort to individual roles without changing the captain's model.
-- **Independent tool policies:** choose all available tools or a custom allow-list for the captain and each member.
-- **Nine built-in presets across two series:** three software development scale teams (Lightweight, Standard, Full-Stack) and six specialized work-mode teams (Discovery, Planning, Workflow, Engineering, Security Audit, Research).
-- **Display metadata:** attach summary, tags, use cases, quick prompts (suggested tasks), and notes per Team. Strictly presentation-only: never injected into the runtime LLM context, saving context tokens.
-- **Local categories and search:** organize presets into custom categories via a dedicated category manager; instantly search over name, summary, tags, and use cases in both Settings and the Composer picker.
-- **Private Team Skill library:** import skill folders or ZIP archives into a plugin-owned store (`~/.dsh/team-skills`), completely isolated from global host skills.
-- **Per-agent skill isolation:** a 3-column assignment grid on member pages assigns skills to specific roles. Assigned skills are registered **strictly in that Agent's scope** when summoned—never leaked globally.
-- **Official built-in skills & local overrides:** ships two delivery skills (`github-repository-presentation`, `git-release-hygiene`) and two method skills (`grilling`, `research`), materialized into the private library and pre-bound to engineering, discovery, and research roles. Create local editable overrides and one-click restore them to the built-in copy (`恢复为插件内置版本`).
-- **Guarded deletion with blocker modal:** deleting a skill bound to any role, in use by an active member, or required as a dependency is refused, with a confirmation modal detailing every blocking holder.
-- **Dependency verification & MCP boundaries:** checks declared CLI executables against host `PATH` (flags found/missing and refuses assignment when absent) and reports declared MCP servers (declarative display; never auto-connected or hard-blocking).
-- **Agent-facing tools:** root sessions provide `list_team_skills`, `assign_team_skill`, `unassign_team_skill`, and `remove_team_skill` alongside `get_team_preset` and `update_team_preset`.
-- **Live settings feedback:** see whether a Team is idle, busy, or awaiting an update in an online Session.
-- **Theme integration:** robust light and dark mode adaptation across all cards, dialogs, inputs, and dropdowns.
+| 你的 DSH 版本 | 能否使用 |
+|---|---|
+| `>= 0.2.1-rc.2 < 0.3.0` | ✅ **支持**。`0.2.1-rc.2` 和 `0.2.1-rc.3` 都实测可用 |
+| `0.2.0-rc.2` 及更早 | ❌ **不支持**。插件管理器会直接拒绝安装/激活 |
+| `>= 0.3.0` | ❌ **未验证**，本版不声明支持 |
 
-## Contents
+查版本：
 
-- [Overview](#project-introduction)
-- [Why this plugin?](#why-this-plugin)
-- [Features](#features)
-- [Screenshots](#screenshots)
-- [Requirements](#requirements)
-- [Install and upgrade](#use-this-package)
-- [Configure and use a Team](#configure-a-team)
-- [Display metadata, categories, and search](#metadata-categories-search)
-- [Private Team Skills and per-agent isolation](#team-skills)
-- [Share presets](#share-presets)
-- [Agent-facing tools](#agent-facing-tools)
-- [Tool permissions and security](#tool-permissions)
-- [Troubleshooting and limitations](#known-limitations-and-deferred-work)
-- [How it works](#understand-the-implementation)
-- [Development and contributing](#development)
-- [Related resources](#further-exploration)
-- [License](#license)
+```sh
+dsh --version
+```
 
-<a id="screenshots"></a>
-## Screenshots
+> **为什么下限是 rc.2 而不是更早？** 本版用到 `@deepseek-ai/dsh-tool-executor-native`，那个包自己的版本范围就从 `0.2.1-rc.2` 起。插件声明的范围不能比依赖的还宽，否则会出现「插件管理器放行、装上却跑不起来」的情况。
 
-The screenshots illustrate the v0.1.8 settings interface, Team Skill management, and composer workflow. Example provider and model names depend on your deployment.
+### 2. Agent Teams 已启用
 
-**Manage Teams: tabs, search, source and series filters**
+标准集成是 `@deepseek-ai/dsh-experimental-agent-team-profile`，它提供团队服务、工具和 Web 名册。**本插件只配置和管理团队，不替代这个子系统。**
 
-![Team list in Settings](<docs/shots/teams-list.png>)
+### 3. Web 或 Desktop profile
 
-**Choose a Team in the composer with search and source filters**
+插件界面要挂在 Settings 里，所以要装到你**实际在用的那个 profile**：Web GUI 一般是 `web`，桌面端一般是 `desktop`。
 
-![Composer Team picker](<docs/shots/composer-picker.png>)
+> 另外，成员创建需要持久存储和支持恢复执行的子智能体后端（默认 `spawn`、`fork`）。这两个不可用时插件会**明确拒绝**创建成员，而不是偷偷降级。
 
-**Private Team Skill library with origin badges and actions**
+### 版本号别搞混
 
-![Team Skill library](<docs/shots/skills-library.png>)
+- **插件版本**：本版 `0.2.0`
+- **Runtime 版本**：例如 `0.2.1-rc.3`
 
-**Assign Team Skills to a member role**
+两条完全独立的版本线。插件 `0.2.0` 跑在 Runtime `0.2.1-rc.3` 上是**正常组合**，不是版本不匹配。
 
-![Member Team Skill assignment grid](<docs/shots/member-skill-grid.png>)
+---
 
-**Skill details: file tree, editor, and local copy actions**
+## 安装
 
-![Team Skill detail view](<docs/shots/skill-git-release-hygiene.png>)
+### 方式一：从 GitHub 安装（推荐，能收到更新）
 
-**Guarded skill deletion with blocking holders modal**
+```sh
+dsh plugin --profile web add github:jaxhu1108/dsh-agent-team-presets
+```
 
-![Skill delete blocker dialog](<docs/shots/skill-delete-dialog.png>)
+把 `web` 换成你实际的 profile 名。要固定本版：
 
-**Manage custom preset categories**
+```sh
+dsh plugin --profile web add github:jaxhu1108/dsh-agent-team-presets#v0.2.0
+```
 
-![Team preset categories page](<docs/shots/category-manager.png>)
+> 仓库是**私有**的。拉取前你本机得有 GitHub 凭据（`gh auth login`、SSH key 或 `.netrc` 任选其一），否则会拉取失败。
 
-**Team editor: display metadata, category picker, and status notices**
+### 方式二：在 GUI 里点（装本地包）
 
-![Team editor](<docs/shots/team-editor.png>)
+打开 **全局面板 → 插件 → 添加插件**，在「包名或地址」里粘贴本地绝对路径：
+
+```text
+/你的路径/dsh-agent-team-presets
+```
+
+输入框支持：包名、`name@version`、`github:作者/仓库`、tarball 地址、本地绝对路径。
+
+### 安装后确认
+
+按插件管理器的提示重新加载（或重启 DSH），然后：
+
+1. 打开 **设置 → 智能体团队预设**
+2. 确认插件详情显示名称 `dsh-agent-team-presets`、版本 `0.2.0`
+3. 确认组件状态是「运行中」
+
+### 注意事项
+
+- **本包自己声明了 `dsh.bundle`**，安装后由插件管理器登记为 profile 的 bundle 层。**不要再手写 loader 条目**——重复条目会让设置存不进去，报错形如：
+  ```text
+  Configuration for "agent-team-presets" is overridden by a home patch or command-line overlay
+  ```
+- 同一个包名不能重复安装。要从 GitHub 换成 npm 源，先在插件列表里卸载，再重新粘贴。
+- 从开发链接迁移过来时，先移除 `@deepseek-ai/dsh-experimental-agent-team-presets`，再启用本包，然后重启。
+
+---
+
+## 快速开始（五分钟上手）
+
+1. **设置 → 智能体团队预设**，左栏能看到 9 个内置团队。
+2. 挑一个接近你需求的，点**复制**（不要直接改内置的，内置的改坏了要「恢复默认预设」才能回来）。
+3. 改个名字，写上团队用途。
+4. 到队员页，给每个角色配**模型路由**和**工具权限**（这俩是本地字段，不随导出文件走）。
+5. 点页脚的**保存**。没保存之前都是草稿。
+6. 回到会话，在输入区的团队选择器里选中它。
+7. 直接说话就行，例如：
+
+   > 用当前团队。让执行者实现这个功能并补测试，再让审查员独立把关，最后汇总改动和剩余风险。
+
+**想换个活干，就换团队或选「不使用团队」。** 选「不使用团队」后，等队长和所有队员空闲，团队会被卸载，会话回到常规状态——**不会改动你已选的模型**。
+
+---
+
+## 怎么用好一个团队（实践要点）
+
+### 队长的提示词决定成败
+
+队长不是"转发器"，它是**真正干活的智能体**。写队长提示词时写清这几件事：
+
+- **你自己能做什么**：小事直接干，不要为了显得热闹而召唤一堆人。
+- **什么情况下叫人**：写具体条件，别写"按需"这种模糊词。
+- **绝对不能碰什么**：凭据、生产数据、不可逆删除。
+- **交付标准**：结论要有证据，验证到哪一步说到哪一步。
+
+一个可以直接抄的开头：
+
+```
+你是工程团队的队长，也是能亲自设计、开发和调试的高级工程师。
+1. 从当前请求和工作区真实文件读取代码、约束与已批准决定，不为简单任务遍历仓库。
+2. 简单或强依赖连续推理的任务自己处理。仅在明确专业增益、可安全切分，或需要独立审查时才召唤成员。
+3. 委派时提供：任务目标、必要证据、允许写入的文件范围、验收要求。
+4. 按风险做真实检查并如实陈述；未测、失败、缺口必须明说，不用推测声称完成。
+5. 最终简述实现、真实验证、未完成事项。
+```
+
+### 成员描述是给队长看的「选人依据」
+
+成员描述（限 200 字符）不是给人看的介绍，是**队长决定叫不叫这个人**的依据。所以要写"这活归他"，而不是"他很厉害"。
+
+- ❌ `资深专家，经验丰富，能力出众`
+- ✅ `只读侦察兵：查文档、日志、代码线索，出证据清单，不写业务代码`
+
+### 队员的模型可以不一样
+
+这是本插件最实用的能力之一。典型组合：
+
+| 角色 | 模型选择思路 |
+|---|---|
+| 队长 | 用你当前会话的强模型，负责判断和整合 |
+| 干重活的执行者 | 同款强模型，或更强的 |
+| 侦察 / 搜索 / 整理 | 便宜快的小模型足够 |
+| 独立审查员 | **故意换个模型**，避免和写代码的同一个脑子犯同样的错 |
+
+### 工具权限：白名单是权限边界，不是装饰
+
+- **默认所有工具**：不限制。
+- **自定义白名单**：只给列出的工具。协作工具（`send_message`、`list_agents`、`team_task_*`）需要**显式勾选**，否则队员没法跟你汇报。
+- 队长和成员的策略**完全独立**。
+- **`skill` 工具永远放行**，且不在可选项里出现。它只负责发布技能目录、加载指令文本，本身不授予任何能力；而宿主会把整个技能目录从看不到该工具的角色那里收起。所以把它做成勾选框只会误导人。
+
+> ⚠️ **白名单不是文件系统沙箱，也不是网络沙箱。** 允许了 `bash` 的角色，就能干 `bash` 能干的一切。真正的隔离靠运行时权限等级和审批策略。
+
+### 三个容易踩的坑
+
+1. **队员召唤是模板实例化，不是"复用同一个人"**。每次召唤生成唯一 target（`executor`、`executor-2`……）。想让同一个队员接着干，用 `send_message` 发给他已有的 target，**不要重新召唤**。
+2. **改了预设不等于当场生效**。空闲会话保存后立即生效；正在跑任务的会话会在**下一次任务开始前**才采用新定义，当前任务保留它启动时的那份定义。
+3. **正在执行时不能改预设**。团队里有成员在跑（running / provisioning），`update_team_preset` 会拒绝，返回 `team-busy`。等跑完或中断掉再改。
+
+---
+
+## 字段速查
+
+| 字段 | 说明 |
+|---|---|
+| 团队名称 / 用途 | 标识预设，说明适合什么活 |
+| 所属分类 | 归到自建分类，纯本地，不随文件导出 |
+| 展示元数据 | 简介、标签、适用场景、推荐任务、备注。**纯展示，绝不注入 LLM 上下文**，不烧 token |
+| 队长 | 会话的主智能体。非空提示词会**替换**它的 persona 前缀；队长始终用会话当前模型 |
+| 成员 | 队长可召唤的角色模板 |
+| 名称 | 显示名 + target 基础。ASCII 字母/数字/连字符，≤64 字符，不能叫 `lead` |
+| 描述 | 给队长看的选人依据，建议 ≤200 字符 |
+| 颜色 | 设置页和名册里的区分色 |
+| 提供商 / 模型 | **仅成员**。留空 = 继承队长路由 |
+| 思考强度 | **仅成员**。取决于模型支持，留空 = 路由默认 |
+| 允许的工具 | 所有工具 / 自定义白名单 |
+| Team Skills | 专属技能。召唤时**只在该 Agent 作用域**注册 |
+| 系统提示词 | 固定角色指令。`{{变量}}` 会当模板变量处理 |
+| **队长人事权限** | v0.2.0 新增。允许队长自己增删改队员，见下节 |
+
+---
+
+## 队长人事权限（v0.2.0 新增）
+
+**让队长自己管队员名单，不用每次都由人去设置页改。**
+
+**怎么开**：团队编辑页里有个「队长团队成员管理权限」开关。**默认关闭**。
+
+**开启即授权**：这个开关本身就是你的授权动作，所以队长改名单时**不会再逐次弹审批**。（原因很实在：`完全权限` 档位捆绑了「从不询问」的审批策略，如果写入必须过审批，那开关写着「开」但队长永远写不进去。）
+
+**开着的时候，队长能做**：
+- 新增成员、改成员名字
+- 改成员的描述、系统提示词
+- 改成员的 provider / 模型 / 思考强度
+- 改成员的工具权限
+- 移除成员
+
+**两条护栏**（防止队长把自己人废掉）：
+1. `自定义` 模式配**空**工具列表 → 直接拒绝。空白名单等于"一个工具都不许"，跟打错字没法区分。
+2. 切回 `所有工具` 时**清空已存白名单**。否则日后切回自定义，会悄悄复活一个没人重选过的限制。
+
+**一条权限护栏**：会话权限等级是「仅可查看」（read-only）时，成员名单写入被拒。因为那个档位的意思是"这个会话什么都不改"，不只是"不许改预设"。
+
+**生效时机**：名单改动在**下一个任务边界**生效，不在改它的那一轮内生效——名单在工具集注册时就已解析完毕。
+
+> 成员的工具权限**只能在设置页改**，不对队长开放。这是刻意的：工具权限是安全边界，人手确认更合适。
+
+---
+
+## 内置预设
+
+全新安装会初始化 **9 套可编辑团队**，分两个系列。
+
+### 研发规模系列
+
+| 预设 | 角色 | 适合 |
+|---|---|---|
+| **轻量研发团队**<br>`builtin-lightweight` | 队长、全栈顾问、研发执行者 | 小型功能与模块迭代 |
+| **标准研发团队**<br>`builtin-standard` | 队长、系统架构师、研发执行者、独立代码审查员 | 标准软件项目 |
+| **全栈软件研发团队**<br>`builtin-fullstack` | 队长、后端架构师、UI 设计师、研发执行者、独立审查员 | Web / 桌面 / Android 跨端复杂工程 |
+
+### 工作模式系列
+
+| 预设 | 角色 | 适合 |
+|---|---|---|
+| **需求探索**<br>`builtin-discovery` | 队长、需求挖掘专家、方案探索者、独立质疑者 | 想法还雏形，目标没定 |
+| **架构规划**<br>`builtin-planning` | 队长、架构设计专家、技术选型评估者、风险合规审计员 | 目标明确，但结构契约要深设计 |
+| **既定工作流执行**<br>`builtin-workflow` | 队长、流程调度专家、任务执行者、成果验收员 | 项目已有成熟方案，只需执行 |
+| **工程研发协作**<br>`builtin-engineering` | 队长、架构顾问、研发执行者、代码审查员、仓库交付专家 | 功能开发 + 跨层实现 + 规范交付 |
+| **独立代码与安全审计**<br>`builtin-audit` | 队长、漏洞分析专家、代码安全审计员、依赖合规检查员 | 对代码 / 配置 / 依赖做只读审查 |
+| **科研协作**<br>`builtin-research` | 队长、领域调研专家、实验与数据分析员、学术严谨性审查员 | 文献综述、实验设计、数据分析 |
+
+**内置预设每个 profile 只初始化一次**。你改过或删过会被记住。点**恢复默认预设**会把内置字段和角色名单还原，但**保留你配的模型路由和工具权限**（那俩是本地字段）。
+
+> 📁 想看每套预设的完整 JSON 定义？见 [`contrib/default-presets/`](<contrib/default-presets>)。
+> 📁 想看一套**带人事权限开关的完整示例**？见 [`examples/`](<examples>)。
+
+---
+
+## 私有 Team Skill（角色级技能隔离）
+
+这是本插件和原生能力差异最大的一块。
+
+**普通 DSH 技能是全局注册的**——所有智能体都看得见。本插件做了一套私有库：
+
+1. **私有存储**：技能存在插件自己的目录（`~/.dsh/team-skills`），不污染宿主全局技能列表。
+2. **作用域隔离**：成员被召唤时，绑给它的技能**只在该成员的 Agent Scope 内注册**。其他队员和队长既看不到也调不了。
+3. **随包 4 个技能**：
+   - 交付型：`github-repository-presentation`、`git-release-hygiene`
+   - 方法型：`grilling`（先澄清再动手）、`research`（只认一手来源）
+4. **可改可还原**：内置技能只读，但可以**创建本地可编辑副本**；插件升级时会提示 `updateAvailable`，随时能「恢复为插件内置版本」。
+5. **来源色标**：插件内置（蓝）/ 自定义（紫）/ 本地副本（琥珀）。
+
+**导入与依赖检查**：
+- 支持导入技能文件夹或 `.zip`。
+- 声明的 CLI 可执行程序会在宿主 `PATH` 上**真实查找**（Windows 也遵守 `PATHEXT`）；缺失时标记并在分配时阻断（`dependency-missing`）。
+- 声明的 MCP 服务**只做声明式展示，不自动拉起、不自动连接**，标记为 `unverified` 且不阻断分配。MCP 生命周期归你的 profile 管。
+
+**强阻断删除**：技能只要还被任何角色绑定、被活跃成员占用、或被其它技能依赖，删除就被拒绝，弹窗会列出**所有**持有者（例如 `标准研发团队 → executor`），确认按钮置灰。
+
+---
+
+## 分享团队预设
+
+**导出**把团队存成 JSON 文件，**导入预设**读回来。
+
+| 会带走的字段 | 留在本地的字段 |
+|---|---|
+| 团队名称、用途、展示元数据 | 模型路由、思考强度 |
+| 队长和成员的名称、描述、提示词、颜色 | 工具权限 |
+| 人事权限开关（v0.2.0 格式） | 本地分类归属 |
+
+导入遇到同名团队时，可以选**覆盖**或**改名新建**。覆盖会保留原角色的本地模型路由和工具策略。
+
+> ⚠️ 导入陌生来源的预设前，**先读一遍它的提示词和权限**。预设里的系统提示词会真的进入运行时。
+
+---
+
+## 面向智能体的工具
+
+根会话会注册这些工具，队长在工具策略允许时可直接用：
+
+| 工具 | 作用 |
+|---|---|
+| `get_team_preset` | 读当前/指定团队预设，含完整成员配置和设置修订号 |
+| `update_team_preset` | 用 CAS 修订号改团队。人事权限开启时可增删改队员；否则只改描述和提示词 |
+| `list_team_skills` | 列私有库技能、来源、依赖、角色分配状态 |
+| `assign_team_skill` | 给某角色分配技能（作用域限定该 Agent） |
+| `unassign_team_skill` | 解除分配 |
+| `remove_team_skill` | 从私有库删除（受阻断规则保护） |
+
+---
+
+## 排障
+
+| 现象 | 查什么 |
+|---|---|
+| 看不到设置页 / 插件 pending | profile 类型对不对、DSH 版本是否 ≥ `0.2.1-rc.2`、Agent Teams 有没有启用 |
+| `Configuration for "agent-team-presets" is overridden...` | profile patch、`$DSH_HOME/cordis.patch.yml`、`--patch` 里有重复手写条目，删掉重复项 |
+| 技能删除按钮置灰 | 技能受保护。看弹窗里的阻断列表，先去对应团队角色里取消分配 |
+| 技能分配报 `dependency-missing` | 技能声明的某个命令行程序在 `PATH` 上找不到 |
+| 成员创建被拒 | 持久存储、执行后端（`spawn`/`fork`）、模型配额、并发上限 |
+| 成员显示的模型和配置不一致 | rc.2/rc.3 里 `list_agents.model` 读的是 fallback 元数据。**实际路由以 `spawn_team_member` 返回的 `configuredRoute` 为准** |
+| 队长说改完名单没反应 | 名单在下一个任务边界生效，不是当轮 |
+
+---
+
+## 界面预览
+
+以下截图展示设置页团队管理、私有技能库与输入区选用流程。模型名和工具取决于你的实际部署。
+
+**管理已保存的团队：标签页、搜索、来源与系列筛选**
+
+![设置中的团队列表](<docs/shots/teams-list.png>)
+
+**在会话输入区选择团队**
+
+![会话输入区的团队选择器](<docs/shots/composer-picker.png>)
+
+**私有 Team Skill 技能库**
+
+![团队技能库列表](<docs/shots/skills-library.png>)
+
+**为成员角色分配专属技能**
+
+![成员专属技能分配九宫格](<docs/shots/member-skill-grid.png>)
+
+**技能详情与本地副本管理**
+
+![技能详情页面](<docs/shots/skill-git-release-hygiene.png>)
+
+**技能删除强阻断弹窗**
+
+![技能删除阻断弹窗](<docs/shots/skill-delete-dialog.png>)
+
+**团队预设分类管理**
+
+![团队分类管理页面](<docs/shots/category-manager.png>)
+
+**团队编辑页**
+
+![团队编辑页面](<docs/shots/team-editor.png>)
 
 <details>
-<summary>More screenshots (model routing, custom dropdowns, prompts, and tool policies)</summary>
+<summary>更多截图（模型路由、下拉交互、系统提示词、工具策略）</summary>
 
-**Category dropdown in Team editor**
+![分类下拉弹层](<docs/shots/category-select-popup.png>)
 
-![Category select popup](<docs/shots/category-select-popup.png>)
+![自定义来源筛选](<docs/shots/teams-custom-source.png>)
 
-**Filter Teams by custom source**
+![成员模型设置](<docs/images/04-member-route.png>)
 
-![Custom source filter](<docs/shots/teams-custom-source.png>)
+![模型选择器](<docs/images/05-model-picker.png>)
 
-**Configure member models and reasoning effort**
+![队长系统提示词](<docs/images/06-captain-system-prompt.png>)
 
-![Member model settings](<docs/images/04-member-route.png>)
+![成员系统提示词](<docs/images/07-member-system-prompt.png>)
 
-**Model picker**
+![默认工具策略](<docs/images/08-tools-default.png>)
 
-![Model picker](<docs/images/05-model-picker.png>)
-
-**Captain and member system prompts**
-
-![Captain system prompt](<docs/images/06-captain-system-prompt.png>)
-
-![Member system prompt](<docs/images/07-member-system-prompt.png>)
-
-**Tool policy controls**
-
-![Default tool policy](<docs/images/08-tools-default.png>)
-
-![Custom tool policy](<docs/images/09-tools-custom.png>)
+![自定义工具策略](<docs/images/09-tools-custom.png>)
 
 </details>
 
-<a id="requirements"></a>
-## Requirements
+---
 
-- **DeepSeek Harness with the required rc.2 APIs.** Supported versions: `>=0.2.0-rc.2 <0.3.0`. The plugin manager enforces the declared `engines.dsh` range and refuses to install or activate the plugin outside it; the `@deepseek-ai/dsh-*` peer ranges serve package managers and are ignored by that check. This release was verified against **`0.2.1-rc.2`**; `0.2.0-rc.2` was not re-run for 0.1.8. See [package.json](<package.json>).
-- **Agent Teams enabled in the target profile.** The standard integration is `@deepseek-ai/dsh-experimental-agent-team-profile`, which supplies the Team service, tools, and Web roster. This plugin configures and manages Teams; it does not replace that subsystem.
-- **A Web or Desktop profile with Settings and the required client services.** Install into the profile you actually use, typically `web` for the Web GUI or `desktop` for Desktop.
-- **Durable storage and a continuable subagent backend for member execution.** Member creation is refused if the storage domain or selected execution backend is unavailable. The default backend names are `spawn` and `fork`.
+## 工作原理
 
-The plugin version (`0.1.8`) and the Harness version (`0.2.1-rc.2`, for example) are separate version lines.
+插件通过 Cordis 扩展点与 Runtime 协作，**不改宿主源码**：
 
-<a id="use-this-package"></a>
-## Install and upgrade
+1. **Profile 配置**：保存团队预设、展示元数据、本地分类、活动会话选择。
+2. **会话应用**：在 Agent 作用域安装队长 persona、工具策略和 `spawn_team_member`。
+3. **成员创建**：校验路由与委派配额，写持久快照，召唤子会话。串行 `agent/created` 钩子在首次请求前把模型路由、persona、工具白名单、专属 Team Skill 注入该成员的 Agent 作用域。
+4. **私有技能管理**：技能目录存储、防崩溃事务日志、依赖解析、删除阻断核验。
 
-### One-click install in the GUI (Add plugin)
+### 源码导航
 
-Open **Global panels → Plugins → Add plugin**, paste the line below into **Package name or address**, and click **Install**:
-
-```text
-dsh-agent-team-presets@0.1.8
-```
-
-<!-- release-version: keep in sync with package.json version -->
-
-- **Registry** selects which npm source the download comes from. **Default registry** uses pnpm's own configuration. Pick **Official npm registry** to bypass a mirror, or **Custom address** for an internal or cloud mirror.
-- `@0.1.8` pins the version; omit it to install the latest published package.
-- The field accepts package names, `name@version`, `github:owner/repo`, tarball URLs, or absolute filesystem paths.
-- This package declares `dsh.bundle`, so the plugin manager automatically registers it as a profile bundle layer; do not add a loader entry by hand.
-- Once installed, reinstalling the same package identity is blocked. To switch sources (e.g. from GitHub to npm), uninstall first, then install the new spec.
-- After installation, reload or restart as prompted.
-
-### Install from GitHub
-
-To receive repository update notifications:
-
-```sh
-dsh plugin --profile <profile> add github:bloodarea/dsh-agent-team-presets
-```
-
-Replace `<profile>` with your active profile (e.g. `web` or `desktop`):
-
-```sh
-dsh plugin --profile web add github:bloodarea/dsh-agent-team-presets
-```
-
-To pin the v0.1.8 release tag:
-
-```sh
-dsh plugin --profile <profile> add github:bloodarea/dsh-agent-team-presets#v0.1.8
-```
-
-### npm release channel
-
-GitHub and [npm](https://www.npmjs.com/package/dsh-agent-team-presets) are separate release channels. Verify the published version on npm before installing:
-
-```sh
-npm view dsh-agent-team-presets version
-dsh plugin --profile <profile> add dsh-agent-team-presets
-```
-
-### Verify and upgrade safely
-
-After installation, follow the plugin manager's reload/restart prompts and navigate to **Settings → Agent team presets**. Verify that details display `dsh-agent-team-presets`, version `0.1.8`, and a running component.
-
-- Back up profile settings, Team definitions, and Session selections before upgrading.
-- When migrating from a development link, remove `@deepseek-ai/dsh-experimental-agent-team-presets` first before enabling the community package.
-- Restart Harness after switching package identities, then refresh the GUI.
-
-> **Install the bundle; do not add a second loader declaration.** The package already supplies its own [bundle patch](<cordis.patch.yml>). Duplicate hand-written declarations in profile patches can prevent settings from saving. See [Configuration writes are overridden](#configuration-overridden).
-
-<a id="configure-a-team"></a>
-## Configure and use a Team
-
-1. Open **Settings → Agent team presets**.
-2. Select a built-in Team, duplicate an existing one, or click **New Team**.
-3. Configure its name, purpose, display metadata, category, captain, and member roles.
-4. For each member, configure its provider/model route, reasoning effort, tool policy, and assigned Team Skills.
-5. Press **Save** in the shared footer. Edits remain staged drafts until saved.
-6. Select the Team from the conversation composer's Team control, then prompt the captain to coordinate the task.
-
-Example prompt for a Team with execution and review roles:
-
-> Use the selected Team. Have the executor implement the agreed changes and regression tests, then ask the reviewer to inspect them independently. Summarize changes, test results, and remaining risks.
-
-A preset role is a template. Summoning creates an instance with a unique target such as `executor` or `executor-2`. Use `send_message` with the returned target to continue working with an existing instance rather than spawning a new one.
-
-Selecting **No team** disarms the Team application once the captain and teammates become idle, restoring standard session contributions without changing the active model.
-
-### Fields
-
-| Field | Purpose |
+| 范围 | 源码 |
 |---|---|
-| Team name and purpose | Identify the preset and explain what work it handles. |
-| Category | Assign the Team to a local category for organization in lists and picker. |
-| Display metadata | Summary, tags, use cases, quick prompts, and notes. Purely presentation-only; never injected into LLM context tokens. |
-| Captain | The lead agent. A nonempty captain prompt replaces its persona prefix; the captain keeps the conversation's model. |
-| Members | Reusable role templates the captain can summon. |
-| Name | Role display name and target base. ASCII letters/digits and hyphens (max 64 chars, not `lead`). |
-| Description | Role responsibilities for the captain to select appropriate members (max 200 chars). |
-| Color | Accent color distinguishing the role in settings and the roster. |
-| Provider / Model | Members only. Route from the deployment's model catalog. |
-| Reasoning effort | Members only. Options depend on model support; empty uses route default. |
-| Allowed tools | Independent all-tools or custom allow-list policy. |
-| Team Skills | Assigned private skills, registered exclusively in this Agent's scope upon creation. |
-| System prompt | Standing role instructions. `{{variable}}` denotes prompt template variables. |
+| 插件生命周期与设置协调 | [src/index.ts](<src/index.ts>)、[src/settings-reconcile.ts](<src/settings-reconcile.ts>) |
+| 内置预设目录与系列 | [src/builtin-teams.ts](<src/builtin-teams.ts>)、[src/team-catalog.ts](<src/team-catalog.ts>) |
+| 团队应用与成员召唤 | [src/application.ts](<src/application.ts>) |
+| 成员快照与运行时注入 | [src/member-store.ts](<src/member-store.ts>)、[src/member-identity.ts](<src/member-identity.ts>)、[src/member-runtime.ts](<src/member-runtime.ts>) |
+| 私有 Team Skill 子系统 | [src/team-skills/](<src/team-skills/>) |
+| 工具策略与执行器 | [src/tool-policy.ts](<src/tool-policy.ts>)、[src/presentation.ts](<src/presentation.ts>) |
+| 预设工具与导入导出 | [src/preset-tools.ts](<src/preset-tools.ts>)、[src/preset-editor.ts](<src/preset-editor.ts>)、[src/preset-transfer.ts](<src/preset-transfer.ts>) |
+| 浏览器前端 | [src/client/](<src/client/>) |
 
-### Built-in presets
+---
 
-A fresh installation seeds nine editable Teams across two series:
+## 适配说明（给要改代码的人）
 
-#### 研发规模系列 (Classic Development Scale)
+本版针对 DSH `0.2.1-rc.3` 做过一轮 API 迁移。**六个改动点全部记录在 [ADAPTATION.md](<ADAPTATION.md>)**，包含：
 
-| Preset | Roles | Intended use |
-|---|---|---|
-| **轻量研发团队**<br>`builtin-lightweight` | Captain, fullstack-advisor, executor | Small features and module iterations. Captain plans and verifies, architecture advisor handles cross-layer technical contracts on demand, executor writes code, tests, and debugs. Pre-bound with official delivery skills. |
-| **标准研发团队**<br>`builtin-standard` | Captain, system-architect, executor, code-reviewer | Standard software projects. Captain coordinates, system architect establishes interface contracts and module boundaries, executor develops and tests, independent code reviewer inspects quality. Pre-bound with official delivery skills. |
-| **全栈软件研发团队**<br>`builtin-fullstack` | Captain, backend-architect, ui-designer, executor, reviewer | Complex full-stack engineering across Web, Desktop, and Android. Captain leads, backend architect and UI designer provide technical/UX contracts, reviewer enforces quality gates, executor implements. Pre-bound with official delivery skills. |
+- 新旧写法对照（`tools.execute` 批量调用、`presentAs` → `setExecutor`、`turnBoundary` 读取方式……）
+- 每条的症状——不改会报什么错
+- **一段可以直接粘给你的智能体**、让它照着适配的指令
 
-#### 工作模式系列 (Work Modes)
+如果你的 agent 要帮你改这个插件，或者你要把同样的迁移套到别的插件上，先让它读 `ADAPTATION.md`。
 
-| Preset | Roles | Intended use |
-|---|---|---|
-| **需求探索**<br>`builtin-discovery` | Captain, demand-analyst, solution-explorer, independent-challenger | Open-ended ideas where goal, technical path, or product direction is still exploratory; read-only research with independent challenge. |
-| **架构规划**<br>`builtin-planning` | Captain, system-architect, technology-evaluator, compliance-auditor | Settled goals where systems, module boundaries, and cross-module contracts must be designed. |
-| **既定工作流执行**<br>`builtin-workflow` | Captain, workflow-coordinator, task-executor, delivery-verifier | Established workflows where user specifies next task, and team implements, verifies, and delivers it. |
-| **工程研发协作**<br>`builtin-engineering` | Captain, architect-advisor, executor, code-reviewer, repository-specialist | Feature development, cross-layer implementation, UI/UX, and debugging, with a dedicated repository delivery specialist (`repository-specialist`). Pre-bound with official delivery skills. |
-| **独立代码与安全审计**<br>`builtin-audit` | Captain, vulnerability-expert, security-auditor, compliance-inspector | Independent read-only review of specified code, vulnerabilities, security configurations, and dependency compliance. |
-| **科研协作**<br>`builtin-research` | Captain, domain-researcher, experiment-analyst, rigor-reviewer | Literature review, experiment design, scientific computing, data analysis, and academic rigor inspection. |
+---
 
-Default presets are seeded once per profile. Deleting or editing a built-in preset is respected across restarts. **Restore defaults** restores shipped fields and official rosters while preserving local member model routes and tool policies.
+## 开发与构建
 
-<a id="metadata-categories-search"></a>
-## Display metadata, categories, and search
-
-### Presentation-only display metadata
-
-Each Team preset supports rich metadata:
-- **Summary**: One-line description shown on cards and intros.
-- **Tags**: Keyword chips for filtering and categorization.
-- **Use cases**: Recommended project scenarios.
-- **Quick prompts**: Ready-to-use task templates shown when selecting the Team.
-- **Notes**: Operational reminders or cautions.
-
-**Token economy:** Display metadata is stored in the preset document and used by the UI for search, grouping, and cards, but is **never injected into the runtime LLM prompt context**.
-
-### Local categories and hierarchical filtering
-
-- **Category manager:** Click **管理团队预设分类** in the Settings list to open a dedicated management page. Create, rename, reorder, and delete categories, and inspect team counts per category.
-- **Local isolation:** Categories and team-category bindings are saved in profile settings and are **never exported** with shareable preset documents.
-- **Two-level filters:** The Teams list provides two independent filter rows:
-  - **来源 (Source):** 全部 (All), 插件内置 (Built-in), 自定义 (Custom).
-  - **分类 (Category):** For built-in teams, filters by official series (研发规模 / 工作模式); for custom teams, filters by user-created categories.
-- **Instant search:** A responsive search box searches team names, summaries, tags, use cases, and quick prompts with real-time matched count reporting.
-- **Composer integration:** The conversation composer's Team picker mirrors these source filters and search capabilities, with `不使用团队` pinned to the top.
-
-<a id="team-skills"></a>
-## Private Team Skills and per-agent isolation
-
-### Private store and scope isolation
-
-Traditional skills in Harness are typically registered into the global environment, exposing every skill to every agent. This plugin introduces a **Private Team Skill subsystem**:
-
-1. **Private library:** Skills live in a plugin-managed directory (`~/.dsh/team-skills` or storage domain), isolated from host and profile skills.
-2. **Per-Agent registration:** When a Team member is summoned, its assigned skills are registered **exclusively inside that member's Agent scope**. Other members and the captain cannot see or invoke them unless explicitly assigned.
-3. **Official built-in skills:** four shipped skills: delivery (`github-repository-presentation`, `git-release-hygiene`) and method (`grilling` — clarify before acting; `research` — primary sources only). Default bindings: engineering `executor`/`repository-specialist` receive the delivery skills; the Discovery captain receives `grilling`, its `technical-scout`/`product-scout` and the Research `evidence-scout` receive `research`.
-4. **Local overrides & one-click restore:** Built-in skills are read-only by default. Users can create an editable local copy ("本地副本"). If the built-in skill updates in a new plugin version, an `updateAvailable` status is displayed, and users can restore to the built-in copy (`恢复为插件内置版本`) with one click.
-5. **Origin labels and badges:** Skills display clear color-coded origin tags across all views:
-   - 插件内置 (Built-in, blue)
-   - 自定义 (Custom, purple)
-   - 本地副本 (Override, amber)
-
-### Import, directory scan, and dependencies
-
-- **Folder and ZIP import:** Import external skill folders or `.zip` packages directly in the Web GUI.
-- **Directory scan:** Scans candidate folders in the import path, reporting eligibility and reasons for any rejected folder. Users can copy the absolute library path with one click.
-- **Dependency checks and MCP boundaries:**
-  - **CLI executables:** Declared CLI executables in `SKILL.md` are resolved against host `PATH`, using `PATHEXT` on Windows. Directories and non-executable files do not satisfy the dependency. Missing required executables are flagged and assignment is refused (`dependency-missing`).
-  - **MCP servers (declarative only, not auto-connected):** Declared MCP servers are strictly declarative dependencies displayed in the UI (`skillsDeclared`). The plugin **never connects, launches, or manages** external MCP servers automatically (their lifecycle belongs to the Harness environment and profile). Because MCP connectivity is an environment-level fact, declared MCP servers are reported as `unverified` rather than hard-blocking role assignment. When an MCP server is configured and running in the Harness profile, its exposed tools (`mcp__<server>__<name>`) appear under the MCP tool group in the role's tool configuration and can be authorized via tool policies.
-- **Guarded deletion:** Deletion is strongly guarded. If a skill is currently bound to any team role, used by a running member, or required by another skill, deletion is blocked. The confirmation dialog explicitly lists every holding team and member role (e.g. `标准研发团队 → executor`), keeping the confirm button disabled until bindings are cleared.
-
-<a id="share-presets"></a>
-## Share presets
-
-**Export** saves one Team as a JSON document (format version 2). **Import preset** reads the document and stages it in the editor.
-
-- **Shared fields:** Team name, purpose, display metadata (summary, tags, use cases, quick prompts, notes), captain/member names, descriptions, prompts, and colors.
-- **Local fields:** Model routes, reasoning effort, tool permissions, and local category bindings are **never exported**. Documents containing them are rejected on import.
-- **Name collisions:** Choose between replacing the existing preset or creating a renamed copy. Replacement preserves local routes and tool policies on matched roles.
-- Review imported prompts before executing tasks, especially when using documents from third parties.
-
-<a id="agent-facing-tools"></a>
-## Agent-facing tools
-
-Root sessions register tools allowing agents to inspect and update presets and skills programmatically, subject to tool policies:
-
-### Team preset tools
-
-- **`get_team_preset`**: Reads the active or specified Team preset, returning its purpose, role descriptions, prompts, roster, and settings revision.
-- **`update_team_preset`**: Updates team/captain descriptions and member prompts/descriptions using compare-and-set revision checks. Requires direct human turn and Host approval. Returns `team-busy` if affected members are currently active.
-
-### Team Skill tools
-
-- **`list_team_skills`**: Lists installed private Team Skills, origins, dependencies, and role assignment status.
-- **`assign_team_skill`**: Assigns one Team Skill to a role in a Team (isolated to that agent scope).
-- **`unassign_team_skill`**: Removes a Team Skill assignment from a role.
-- **`remove_team_skill`**: Deletes a Team Skill from the library, enforcing blocker checks.
-
-<a id="tool-permissions"></a>
-## Tool permissions and security
-
-### Policy modes
-
-- **Default: all tools**: No allow-list restriction beyond deployment permissions and role rules.
-- **Custom allowed tools**: Permits only selected tool names. Coordination tools (`send_message`, `list_agents`, `team_task_*`) must be explicitly allowed if needed.
-- Captain and member policies are independent. Granting a tool to the captain does not grant it to members.
-- **The `skill` tool is always admitted, and is not offered as a choice.** It publishes the catalog and loads instruction text rather than granting a capability, and the Host withholds that whole catalog from an Agent that cannot see it. A custom allow-list therefore cannot remove it, and the settings page does not list it: a checkbox for it would be a control that can never do anything. Documents written by an earlier version that still name it keep loading unchanged — the entry is admitted implicitly, never reported as unavailable, and never needs removing.
-
-### What a member's first turn guarantees
-
-An assigned Team Skill is only useful if the member can load it on the turn that asks for it, so the plugin makes the registration part of member creation rather than a background step:
-
-- **Members**: the creation edge awaits that Agent's own registration before it completes. A role that holds assigned Team Skills but whose deployment cannot publish them — no skill service composed, the private library unreadable, or the registration refused — is **refused at creation** with the reason, instead of starting with an empty catalog while every surface says the skill is bound. Roles with no assignment keep working on deployments that compose no skill service.
-- **The captain**: the same registration is performed inside the Session's creation edge, after the Team application it depends on. A captain whose assignment cannot be published does not refuse the Team — a Session that is already running must not lose its capability policy — and the failure is reported at the Agent identity.
-- **Unreadable library is not an empty library.** When the private store cannot be opened the plugin cannot even enumerate a role's bindings, so it refuses member creation rather than reading the unknown as "no assignment". Repair the library path (or start again) to recover.
-
-### Known limitation: Windows verification
-
-The path-separator and executable-resolution fixes are exercised by unit tests that normalize separators and by `ENOTDIR` cases, but no Windows machine was available here. Junction handling across volumes, `PATHEXT` resolution against a real `PATH`, and the full native build chain still need a Windows run before the release is described as Windows-verified.
-
-### Security boundaries
-
-- The allow-list is **not a filesystem, process, or network sandbox**. Allowed tools (such as bash) retain their native capabilities. Maintain appropriate Harness sandbox and approval policies.
-- Custom policy mode disallows general-purpose `run_code` and ordinary `subagent` / `workflow` delegation to preserve strict policy contracts. Use preset Team members for delegation.
-- Managed members require their durable configuration on resume. Missing or corrupted records are refused loud rather than falling back to unrestricted defaults.
-
-<a id="known-limitations-and-deferred-work"></a>
-## Troubleshooting and limitations
-
-<a id="configuration-overridden"></a>
-### Configuration writes are overridden
-
-If saving or selecting a Team reports:
-
-```text
-Configuration for "agent-team-presets" is overridden by a home patch or command-line overlay
-```
-
-Check profile patches, `$DSH_HOME/cordis.patch.yml`, and `--patch` overlays for duplicate hand-written `agent-team-presets` declarations. Remove duplicate declarations while preserving Host-managed settings rows.
-
-### Common issues
-
-| Symptom | What to check |
-|---|---|
-| Settings page is absent or plugin pending | Confirm profile type, peer dependencies, Agent Teams enablement, and client services. |
-| Skill deletion button is disabled | The skill is protected: inspect the blocker list in the modal (bound roles or dependencies must be unassigned first). |
-| Skill assignment refused (`dependency-missing`) | A required executable declared by the skill is absent from host `PATH`. Note that declared MCP servers are reported for visibility and do not block assignment; ensure MCP servers are configured in your profile. |
-| Member creation refused | Check storage domain availability, subagent execution backend (`spawn`/`fork`), model quota, and concurrency limits. |
-| Model route display mismatch | In Harness rc.2, `list_agents.model` reports fallback metadata. Verify actual routing via `spawn_team_member`'s `configuredRoute` or session `request/header` logs. |
-
-<a id="understand-the-implementation"></a>
-## How it works
-
-The plugin integrates via Cordis and Harness lifecycle extension points without patching host source code:
-
-1. **Profile configuration:** Stores Team presets, display metadata, local categories, and active session selections.
-2. **Session application:** Installs captain persona, tool policy, and `spawn_team_member` at Agent scope.
-3. **Member creation & skill scoping:** Validates route and delegation limits, persists an instance snapshot, and launches the subagent. The serial `agent/created` hook injects model selection, persona, tool filters, and **assigned Team Skills strictly into that member's Agent scope**.
-4. **Private skill manager:** Encapsulates skill storage (`~/.dsh/team-skills`), crash-recovery journaling, dependency resolution, and guarded deletion.
-
-### Source navigation
-
-| Area | Source |
-|---|---|
-| Plugin lifecycle and settings reconciliation | [src/index.ts](<src/index.ts>), [src/settings-reconcile.ts](<src/settings-reconcile.ts>) |
-| Built-in team catalog and series | [src/builtin-teams.ts](<src/builtin-teams.ts>), [src/team-catalog.ts](<src/team-catalog.ts>) |
-| Team application and member tool | [src/application.ts](<src/application.ts>) |
-| Member snapshots and runtime injection | [src/member-store.ts](<src/member-store.ts>), [src/member-identity.ts](<src/member-identity.ts>), [src/member-runtime.ts](<src/member-runtime.ts>) |
-| Private Team Skills subsystem | [src/team-skills/store.ts](<src/team-skills/store.ts>), [src/team-skills/manager.ts](<src/team-skills/manager.ts>), [src/team-skills/service.ts](<src/team-skills/service.ts>), [src/team-skills/tools.ts](<src/team-skills/tools.ts>) |
-| Tool policies and presentation | [src/tool-policy.ts](<src/tool-policy.ts>), [src/presentation.ts](<src/presentation.ts>) |
-| Preset tools and transfer | [src/preset-tools.ts](<src/preset-tools.ts>), [src/preset-transfer.ts](<src/preset-transfer.ts>) |
-| Browser client UI | [src/client/](<src/client/>) |
-
-<a id="development"></a>
-## Development and contributing
-
-Source development requires a compatible, dependency-installed [Harness checkout](https://github.com/deepseek-ai/deepseek-harness) with its Host types and generated Typert Remote artifacts built first (the Harness `build:lib:host` pipeline provides them):
+需要一份**装了依赖**的 Runtime 源码 checkout：
 
 ```sh
-export DSH_CHECKOUT=/absolute/path/to/deepseek-harness
-npm test
-npm run typecheck
-npm run bundle
+export DSH_CHECKOUT=/绝对路径/deepseek-runtime
+npm run typecheck   # host + client 两面
+npm run bundle      # 构建 lib/
+npm test            # 单元/组合测试
 ```
 
-Bug reports and pull requests are welcome at [GitHub Issues](https://github.com/bloodarea/dsh-agent-team-presets/issues) and [Pull requests](https://github.com/bloodarea/dsh-agent-team-presets/pulls).
+构建脚本在临时工作区里镜像 checkout，**绝不写进 Runtime 目录**。
 
-Thanks to **张灏焱** for contributing the `grilling` and `research` method Team Skills (PR #2), and to Matt Pocock for the upstream [skills](https://github.com/mattpocock/skills) they adapt (MIT, see [NOTICE](<NOTICE>)).
+### 测试状态（诚实版）
 
-<a id="further-exploration"></a>
-## Related resources
+| 项目 | 结果 |
+|---|---|
+| 类型检查 host | 0 本地诊断 |
+| 类型检查 client | 0 本地诊断 |
+| 构建 | 通过，`lib/index.js` SHA256 `5dc3c1dbf55f96857ea313563caca82cda2a40824b52d9d175bb4eb9627b71d1` |
+| 全量测试 | **762 个用例：761 通过 / 1 跳过 / 0 失败**（51 个文件全过，连跑 3 次结果一致） |
 
-- [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) — Host and plugin architecture.
-- [Built-in preset documents](<contrib/default-presets>) — Shipped team JSON definitions for reference or custom imports.
-- [Bundled skill documents](<assets/skills>) — Shipped skills (`SKILL.md` bundles) materialized into the private library.
-- [Method skill upstream](https://github.com/mattpocock/skills) — Source of `grilling` and `research` (MIT; pinned commit recorded in [NOTICE](<NOTICE>)).
-- [GitHub Releases](https://github.com/bloodarea/dsh-agent-team-presets/releases) — Published release packages.
+### 踩过的坑
 
-<a id="license"></a>
-## License
+某些测试要求「祖先目录没有 `node_modules`」（为了证明产物没有裸 `zod` 依赖）。如果 `/tmp` 下有 `node_modules`，`typert-isolation.spec.ts` 整组会报 `No dependency-isolated scratch directory is available`。绕过：
 
-[MIT](<LICENSE>). Bundled dependency notices are in [THIRD-PARTY-NOTICES.txt](<lib/THIRD-PARTY-NOTICES.txt>); source and MIT attribution for the bundled method skills are in [NOTICE](<NOTICE>).
+```sh
+TMPDIR=/dev/shm npm test
+```
+
+---
+
+## 相关资源
+
+- [DeepSeek Runtime](https://github.com/deepseek-ai/deepseek-runtime) —— 宿主与插件系统
+- [适配说明](<ADAPTATION.md>) —— rc.2 → rc.3 的六个 API 迁移点
+- [内置预设 JSON](<contrib/default-presets>) —— 9 套团队的完整定义，可直接导入
+- [脱敏示例](<examples>) —— 一套带人事权限开关的完整示例
+- [随包技能](<assets/skills>) —— 4 个官方技能的 `SKILL.md`
+
+---
+
+## 致谢
+
+- 上游原作者 **bloodarea**（[bloodarea/dsh-agent-team-presets](https://github.com/bloodarea/dsh-agent-team-presets)）：本插件的基础框架、9 套内置预设、私有技能子系统均来自上游。本仓库是它的 **0.2.0 适配分支**，不改动上游。
+- **张灏焱**：贡献 `grilling` 与 `research` 两个方法型 Team Skill。
+- **Matt Pocock**：[skills](https://github.com/mattpocock/skills)，上述两个方法技能改编自它（MIT，见 [NOTICE](<NOTICE>)）。
+
+## 许可证
+
+[MIT](<LICENSE>)。随包第三方依赖许可见 [THIRD-PARTY-NOTICES.txt](<lib/THIRD-PARTY-NOTICES.txt>)；随包方法技能的来源与 MIT 许可见 [NOTICE](<NOTICE>)。

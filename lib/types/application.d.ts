@@ -54,10 +54,10 @@ export interface TeamApplicationOptions {
      */
     readonly personaFallback?: string;
     /**
-     * The native tool presentation a prepared caller established.
+     * The native tool executor a prepared caller established.
      *
      * A custom policy needs a native surface, and an Agent scope accepts exactly
-     * one presentation declaration: the prepared caller owns this install and its
+     * one LIVE executor: the prepared caller owns this declaration and its
      * verification, so the guard must not declare a second one. The install is
      * part of the application's rollback region.
      */
@@ -67,7 +67,7 @@ export interface TeamApplicationOptions {
          * overrode the Agent preset's own declaration.
          */
         readonly disclosure?: string | undefined;
-        /** Declare the presentation and return the disposer that releases it. */
+        /** Declare the executor and return the disposer that releases it. */
         readonly install: () => () => void;
     };
 }

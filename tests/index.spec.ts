@@ -44,6 +44,24 @@ async function settle(): Promise<void> {
   }
 }
 
+/**
+ * Execute one tool call and return its single settled outcome.
+ *
+ * DSH rc.3 dispatches a BATCH of tool calls: the call is encoded as a raw
+ * `tool-call` block and its `ToolExecutionResult` comes back one level deeper,
+ * at `results[i].result`.
+ */
+async function callTool(ctx: Context, agent: Agent, name: string, args: object = {}) {
+  const batch = await ctx.tools.execute({
+    calls: [{ type: 'tool-call', id: ToolCallId(`${name}-call`), name, arguments: JSON.stringify(args) }],
+    agent,
+    signal: new AbortController().signal,
+  })
+  const settlement = batch.results[0]
+  if (settlement === undefined) throw new Error(`the ${name} batch settled no result`)
+  return settlement.result
+}
+
 /** Mount the loop dependencies plus the two services `apply` reads. */
 async function setup(
   teams: TeamPreset[],
@@ -331,8 +349,7 @@ describe('Team preset reconciliation', () => {
     const claim = vi.spyOn(MemberRuntime.prototype, 'claim')
       .mockReturnValue({ kind: 'invalid', reason: 'store opening' })
     const fiber = await mount(h.ctx, h.config)
-    const call = () => h.ctx.tools.execute({ callId: ToolCallId('child'), name: 'plain_tool', arguments: {},
-      agent: child.agent, signal: new AbortController().signal })
+    const call = () => callTool(h.ctx, child.agent, 'plain_tool')
     expect((await call()).isError).toBe(true)
     if (intact) claim.mockReturnValue({ kind: 'installed', record: {
       teamId: TEAM.id, memberName: 'member', roleId: 'member', lifecycle: 'bound', policy: { mode: 'all', allow: [] },
@@ -412,10 +429,7 @@ describe('Team preset reconciliation', () => {
     // A Session that selected no Team keeps every ordinary tool: no guard and no
     await settle()
     // restriction is installed, so the plugin never narrows normal operation.
-    const result = await ctx.tools.execute({
-      callId: ToolCallId('plain'), name: 'plain_tool', arguments: {}, agent: handle.agent,
-      signal: new AbortController().signal,
-    })
+    const result = await callTool(ctx, handle.agent, 'plain_tool')
     expect(result.isError).toBe(false)
     // The preset tools stay, because a user may ask the captain to adjust a
     // stored preset before this Session selects one; only the Team capability
@@ -436,7 +450,7 @@ describe('Team preset reconciliation', () => {
     const plain = await createAgent(h.ctx, 's2')
     const fiber = await mount(h.ctx, h.config)
     await settle()
-    const call = (agent: Agent) => h.ctx.tools.execute({ callId: ToolCallId('ordinary'), name: 'plain_tool', arguments: {}, agent, signal: new AbortController().signal })
+    const call = (agent: Agent) => callTool(h.ctx, agent, 'plain_tool')
     expect((await call(chosen.agent)).isError).toBe(true)
     expect((await call(plain.agent)).isError).toBe(false)
     h.selectionsRef.set([])
@@ -461,10 +475,7 @@ describe('Team preset reconciliation', () => {
     const handle = await createAgent(ctx, 's1')
     const fiber = await mount(ctx, config)
     await settle()
-    const result = await ctx.tools.execute({
-      callId: ToolCallId('stale'), name: 'plain_tool', arguments: {}, agent: handle.agent,
-      signal: new AbortController().signal,
-    })
+    const result = await callTool(ctx, handle.agent, 'plain_tool')
     expect(result.isError).toBe(true)
     expect(JSON.stringify(result.content)).toContain('Selected Team')
     expect(JSON.stringify(result.content)).toContain('team-1')
@@ -472,7 +483,7 @@ describe('Team preset reconciliation', () => {
     selectionsRef.set([])
     ctx.emit('loader/volatile-update', COMMITTED)
     await settle()
-    expect((await ctx.tools.execute({ callId: ToolCallId('recovered'), name: 'plain_tool', arguments: {}, agent: handle.agent, signal: new AbortController().signal })).isError).toBe(false)
+    expect((await callTool(ctx, handle.agent, 'plain_tool')).isError).toBe(false)
     expect(ctx.tools.get('get_team_preset', handle.agent)).toBeDefined()
     await fiber.dispose()
     await handle.dispose()

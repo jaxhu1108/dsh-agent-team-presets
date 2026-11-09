@@ -14,10 +14,30 @@ export declare const MEMBER_DESCRIPTION_LIMIT = 200;
 export interface TeamMemberEdit {
     /** Member display name, or the teammate target the roster summons it under. */
     readonly member: string;
+    /** Replacement display name; omitted keeps the stored one. */
+    readonly name?: string;
     /** Replacement role description; omitted keeps the stored one. */
     readonly description?: string;
     /** Replacement standing system prompt; omitted keeps the stored one. */
     readonly systemPrompt?: string;
+    /** Replacement provider route; empty inherits the captain route. */
+    readonly provider?: string;
+    /** Replacement provider-owned model id. */
+    readonly model?: string;
+    /** Replacement reasoning effort. */
+    readonly reasoningEffort?: string;
+    /**
+     * Replacement tool policy mode. Omitted keeps the stored one; a new member
+     * defaults to `all`.
+     *
+     * `custom` requires `tools` in the same edit, because a mode without a list
+     * would deny every tool: the allow-list is the whole meaning of custom.
+     */
+    readonly toolMode?: 'all' | 'custom';
+    /** Replacement tool allow-list; only meaningful together with `toolMode: 'custom'`. */
+    readonly tools?: readonly string[];
+    /** Remove this member template from future summons. */
+    readonly remove?: boolean;
 }
 /** The preset fields one edit may replace. */
 export interface TeamPresetEdit {
@@ -29,6 +49,8 @@ export interface TeamPresetEdit {
     readonly captainSystemPrompt?: string;
     /** Member edits, each addressed by display name or teammate target. */
     readonly members?: readonly TeamMemberEdit[];
+    /** Whether roster personnel changes are authorized for this edit. */
+    readonly personnelControl?: boolean;
 }
 /** One refused edit: the model-facing reason, already naming what the caller may pass. */
 export interface TeamPresetEditRefusal {

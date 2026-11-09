@@ -10,6 +10,7 @@ export type TeamPresetsLocaleKey =
   | 'newTeam' | 'duplicate' | 'remove' | 'removeMember'
   | 'teamList' | 'emptyTeams' | 'emptySelection' | 'memberCount'
   | 'teamName' | 'teamNamePlaceholder' | 'teamDescription'
+  | 'personnelControlTitle' | 'personnelControlHint'
   | 'captain' | 'captainHint' | 'members' | 'addMember' | 'membersHint'
   | 'agentName' | 'agentNamePlaceholder' | 'agentColor' | 'agentDescription'
   | 'route' | 'routeInherit' | 'provider' | 'model' | 'effort' | 'effortDefault'
@@ -171,6 +172,8 @@ export const en: Record<TeamPresetsLocaleKey, string> = {
   teamName: 'Team name',
   teamNamePlaceholder: 'Feature build team',
   teamDescription: 'What this team is for',
+  personnelControlTitle: 'Captain personnel control',
+  personnelControlHint: "Allow the captain to add, edit, and remove this Team's roster members, including each member's model and reasoning effort. Changes persist to the shared preset. Available at every permission level except Read Only.",
   captain: 'Captain',
   captainHint: 'The captain replaces this session: its system prompt becomes the session prompt and its tool scope scopes the session tools. It leads on the model the session already selected, so a Team never changes your model.',
   members: 'Members',
@@ -266,7 +269,7 @@ export const en: Record<TeamPresetsLocaleKey, string> = {
   composerMissingHint: 'This is not No team. An unapplicable selection denies tools; a running task keeps its old policy until idle. Choose a valid Team or No team.',
   importPreset: 'Import preset',
   exportPreset: 'Export',
-  importNote: 'A shared document carries names, descriptions, system prompts, and colors. Model routes and tool permissions stay local.',
+  importNote: 'A shared document carries names, descriptions, system prompts, colors, and the Team-level personnel-control setting. Model routes and tool permissions stay local.',
   restoreDefaults: 'Restore defaults',
   restoreDefaultsHint: 'Puts every preset this plugin ships back to its shipped name, description, prompts, colors, and roster. The model routes and tool permissions you configured stay as they are, and teams you created yourself are not touched.',
   defaultsRestored: 'Default presets restored in this draft. Save to apply them.',
@@ -449,6 +452,8 @@ export const zh: Record<TeamPresetsLocaleKey, string> = {
   teamName: '团队名称',
   teamNamePlaceholder: '功能开发团队',
   teamDescription: '团队用途说明',
+  personnelControlTitle: '队长团队成员管理权限',
+  personnelControlHint: '允许队长新增、修改和移除本团队的成员，包括每位成员的模型与思考强度。改动会保存到共享预设。除「仅可查看」外的所有权限等级均可用。',
   captain: '队长',
   captainHint: '队长会接管本会话：队长的系统提示词成为会话提示词、工具权限作用于会话工具。队长使用会话当前已选的模型，团队不会改动你的模型。',
   members: '队员',
@@ -544,7 +549,7 @@ export const zh: Record<TeamPresetsLocaleKey, string> = {
   composerMissingHint: '这不是“不使用团队”。无法应用时权限保持拒绝；进行中的任务保留旧策略直到空闲。请改选有效团队或“不使用团队”。',
   importPreset: '导入预设',
   exportPreset: '导出',
-  importNote: '共享文档只携带名称、描述、系统提示词和颜色；模型路由与工具权限保留在本地。',
+  importNote: '共享文档会携带名称、描述、系统提示词、颜色和团队级成员管理开关；模型路由与工具权限保留在本地。',
   restoreDefaults: '恢复默认预设',
   restoreDefaultsHint: '把插件自带的预设全部恢复到出厂的名称、说明、提示词、颜色和成员名单；你为它们配置的模型路由与工具权限保持不变，你自己创建的团队完全不受影响。',
   defaultsRestored: '默认预设已恢复到草稿，保存后生效。',

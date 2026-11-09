@@ -57,12 +57,13 @@ export function routedCaptain(overrides: Partial<RoutedCaptainPreset> = {}): Rou
 }
 
 /** One Team preset with the supplied members and captain fields. */
-export function team(members: TeamAgentPreset[], captain: Partial<TeamCaptainPreset> = {}): TeamPreset {
+export function team(members: TeamAgentPreset[], captain: Partial<TeamCaptainPreset> = {}, options: Pick<TeamPreset, 'personnelControl'> = {}): TeamPreset {
   return {
     id: 'team-1',
     name: 'Team',
     description: '',
     members,
     captain: captainSlot({ systemPrompt: 'Captain prompt', ...captain }),
+    ...options,
   }
 }

@@ -167,6 +167,20 @@ export function TeamEditorView(props: TeamEditorViewProps) {
         </div>
       </section>
 
+      <section className={css.card}>
+        <label className={css.field}>
+          <span className={css.fieldLabel}>{t('personnelControlTitle')}</span>
+          <span className={css.hint}>{t('personnelControlHint')}</span>
+          <input
+            type="checkbox"
+            aria-label={t('personnelControlTitle')}
+            checked={team.personnelControl === true}
+            disabled={disabled}
+            onChange={(event) => { props.onPatch({ personnelControl: event.target.checked }) }}
+          />
+        </label>
+      </section>
+
       <span className={css.sectionTitle}>{t('teamSections')}</span>
 
       <section className={css.card}>

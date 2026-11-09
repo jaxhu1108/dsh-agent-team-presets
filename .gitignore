@@ -17,3 +17,7 @@ audit/
 .brooks-lint-history.json
 __pycache__/
 *.pyc
+
+# Scratch planning notes for a working session: they quote internal session
+# ids and live only on the machine that wrote them.
+/PLAN-*.md

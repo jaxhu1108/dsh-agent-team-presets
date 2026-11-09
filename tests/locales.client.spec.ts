@@ -25,6 +25,20 @@ describe('Team preset locale bundles', () => {
     expect(zh.toolsDefault).not.toBe(zh.toolsCustom)
   })
 
+  it('provides localized copy for the optional personnel-control switch', () => {
+    expect(en.personnelControlTitle).toMatch(/captain/i)
+    // The switch edits the durable roster, so the hint must say so. It used to
+    // promise "task-scoped" members that "do not change the preset roster",
+    // which is the opposite of what the switch does.
+    expect(en.personnelControlHint).toMatch(/roster/i)
+    expect(en.personnelControlHint).not.toMatch(/task-scoped/i)
+    expect(en.personnelControlHint).toMatch(/reasoning effort/i)
+    expect(zh.personnelControlTitle).toContain('队长')
+    expect(zh.personnelControlHint).toContain('成员')
+    expect(zh.personnelControlHint).not.toContain('临时队员')
+    expect(zh.personnelControlHint).toContain('思考强度')
+  })
+
   it('names every way the stored section can be unusable, in both languages', () => {
     const issues: TeamPresetsFormIssue[] = ['settings-unavailable', 'namespace-missing', 'schema-rejected']
     for (const issue of issues) {

@@ -19,13 +19,12 @@ import {
   applySharedFields,
   importConflicts,
   memberFromTransfer,
-  parseTeamPresetText,
-  serializeTeamPreset,
   slotNameKey,
-  teamFromTransfer,
   uniqueName,
 } from '../preset-transfer.ts'
-import type { TeamPresetImportFailure, TeamPresetTransfer } from '../preset-transfer.ts'
+import type { TeamPresetImportFailure } from '../preset-transfer.ts'
+import { parseTeamPresetFile, serializeTeamPresetFile, teamFromPresetFile } from './preset-file.ts'
+import type { TeamPresetFileTransfer } from './preset-file.ts'
 import { liveAssignments } from '../team-search.ts'
 import type {
   TeamAgentPreset, TeamCaptainPreset, TeamCategory, TeamCategoryAssignment, TeamExecutionRow, TeamExecutionState,
@@ -251,7 +250,7 @@ export type DefaultsRestore = 'restored' | 'unchanged'
 /** What one import will do, once the document was read and its collisions are known. */
 export type TeamPresetImportPlan = {
   /** The document being imported. */
-  readonly transfer: TeamPresetTransfer
+  readonly transfer: TeamPresetFileTransfer
   /** Index of the Team the document would overwrite, or undefined when it adds one. */
   readonly targetIndex: number | undefined
   /** Display name of that Team, for the dialog that resolves the collision. */
@@ -352,6 +351,7 @@ function mergeTransfer(
       })) }),
     captain: applySharedFields(target.captain, { ...captain, name: captainName }),
     members,
+    personnelControl: plan.transfer.team.personnelControl,
   }
 }
 
@@ -540,6 +540,7 @@ function teamJson(team: TeamPreset): JsonValue {
     ...team.officialSkills === undefined ? {} : {
       officialSkills: team.officialSkills.map(binding => ({ skillId: binding.skillId, roleName: binding.roleName })),
     },
+    personnelControl: team.personnelControl === true,
   }
 }
 
@@ -581,6 +582,7 @@ export function createTeamPreset(existing: readonly TeamPreset[]): TeamPreset {
     description: '',
     captain: emptyCaptainPreset(),
     members: [],
+    personnelControl: false,
   }
 }
 
@@ -1236,7 +1238,7 @@ export class TeamPresetsController {
     const team = this.visibleTeams()[index]
     if (team === undefined) return undefined
     const officialSkills = team.officialSkills ?? builtinEntry(team.id)?.officialSkillBindings
-    return serializeTeamPreset(team, officialSkills === undefined ? {} : { officialSkills })
+    return serializeTeamPresetFile(team, officialSkills === undefined ? {} : { officialSkills })
   }
 
   /**
@@ -1248,7 +1250,7 @@ export class TeamPresetsController {
    * @returns the plan, or the reason the document is not a Team preset of this format.
    */
   inspectImport(text: string): TeamPresetImportInspection {
-    const parsed = parseTeamPresetText(text)
+    const parsed = parseTeamPresetFile(text)
     if (!parsed.ok) return parsed
     return { ok: true, plan: { transfer: parsed.transfer, ...importConflicts(this.visibleTeams(), parsed.transfer) } }
   }
@@ -1274,7 +1276,7 @@ export class TeamPresetsController {
     }
     const preferred = resolution.teamName.trim() === '' ? plan.transfer.team.name : resolution.teamName
     const name = uniqueName(preferred, draft.map(team => team.name))
-    const created = { ...teamFromTransfer(plan.transfer, createTeamPreset(draft).id), name }
+    const created = { ...teamFromPresetFile(plan.transfer, createTeamPreset(draft).id), name }
     this.draft = [...draft, created]
     this.publish()
     return created.id

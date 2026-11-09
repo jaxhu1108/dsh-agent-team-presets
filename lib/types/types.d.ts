@@ -68,6 +68,8 @@ export type TeamPreset = {
         readonly skillId: string;
         readonly roleName: string;
     }[];
+    /** Whether the captain may create and manage task-scoped personnel. */
+    personnelControl?: boolean;
 };
 /** One Session's active Team preset. */
 export type TeamSelectionRecord = {

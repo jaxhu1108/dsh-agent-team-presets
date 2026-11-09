@@ -87,10 +87,26 @@ async function flushDeferredWork(): Promise<void> {
   await new Promise<void>((resolve) => { setTimeout(resolve, 0) })
 }
 
-async function callMemberTool(ctx: Context, agent: Agent, args: object) {
-  return await ctx.tools.execute({
-    callId: ToolCallId('spawn-member'), name: 'spawn_team_member', arguments: args, agent, signal: new AbortController().signal,
+/**
+ * Execute one tool call and return its single settled outcome.
+ *
+ * DSH rc.3 dispatches a BATCH of tool calls, so a call is encoded as a raw
+ * `tool-call` block and its `ToolExecutionResult` comes back one level deeper,
+ * at `results[i].result`.
+ */
+async function executeOne(ctx: Context, agent: Agent | undefined, name: string, args: object) {
+  const batch = await ctx.tools.execute({
+    calls: [{ type: 'tool-call', id: ToolCallId(`${name}-call`), name, arguments: JSON.stringify(args) }],
+    ...agent === undefined ? {} : { agent },
+    signal: new AbortController().signal,
   })
+  const settlement = batch.results[0]
+  if (settlement === undefined) throw new Error(`the ${name} batch settled no result`)
+  return settlement.result
+}
+
+async function callMemberTool(ctx: Context, agent: Agent, args: object) {
+  return await executeOne(ctx, agent, 'spawn_team_member', args)
 }
 
 /** Concatenated text of one tool result, so assertions read the model-facing wording. */
@@ -272,10 +288,7 @@ describe('spawn_team_member arguments', () => {
     const definition = ctx.tools.get('spawn_team_member', agent)
     if (definition === undefined) throw new Error('the Team member tool was not registered')
     await ctx.plugin(Object.assign((inner: Context) => { inner.tools.register(definition) }, { inject: ['tools'] }))
-    const result = await ctx.tools.execute({
-      callId: ToolCallId('agentless'), name: 'spawn_team_member', arguments: { member: 'ghost', task: 'work' },
-      signal: new AbortController().signal,
-    })
+    const result = await executeOne(ctx, undefined, 'spawn_team_member', { member: 'ghost', task: 'work' })
     expect(result.isError).toBe(true)
     expect(resultText(result)).toContain('requires a calling Agent')
     application.dispose()

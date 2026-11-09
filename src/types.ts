@@ -69,6 +69,8 @@ export type TeamPreset = {
   metadata?: TeamDisplayMetadata
   /** Portable declarations of shipped skills; never personal asset bindings. */
   officialSkills?: readonly { readonly skillId: string; readonly roleName: string }[]
+  /** Whether the captain may create and manage task-scoped personnel. */
+  personnelControl?: boolean
 }
 
 /** One Session's active Team preset. */

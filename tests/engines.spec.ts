@@ -49,9 +49,17 @@ describe('declared host support', () => {
 
   it('is satisfied by the runtime this release was verified on, prerelease included', async () => {
     const fields = await manifest()
-    // `0.2.0-rc.2` is the exact runtime every claim in this round was measured
+    // `0.2.1-rc.3` is the exact runtime every claim in this round was measured
     // on, and the Host's rule participates prereleases in the range.
-    expect(evaluatePluginCompatibility(fields, {}, '0.2.0-rc.2')).toBeUndefined()
+    //
+    // The floor moved from `0.2.0-rc.2` to `0.2.1-rc.2` because the roster work
+    // imports `NativeToolExecutor` and drives it through `tools.setExecutor`,
+    // and `@deepseek-ai/dsh-tool-executor-native` declares its own floor at
+    // 0.2.1-rc.2. Claiming rc.2 through `engines.dsh` while a peer excludes it
+    // would be a range the plugin manager accepts and the install cannot satisfy.
+    expect(evaluatePluginCompatibility(fields, {}, '0.2.1-rc.3')).toBeUndefined()
+    expect(evaluatePluginCompatibility(fields, {}, '0.2.1-rc.2')).toBeUndefined()
+    expect(evaluatePluginCompatibility(fields, {}, '0.2.0-rc.2')).toBeDefined()
   })
 
   it('refuses what it was not verified on, instead of silently widening the claim', async () => {
@@ -82,7 +90,11 @@ describe('declared host support', () => {
     // invisible to the modern check but would silently over-promise here.
     const peersOnly = { ...fields }
     delete peersOnly['engines']
-    expect(evaluatePluginCompatibility(peersOnly, {}, '0.2.0-rc.2')).toBeUndefined()
+    // The peers carry their own floor at 0.2.1-rc.2 (`dsh-tool-executor-native`
+    // is the binding one), so a Host that predates `engines.dsh` refuses rc.2
+    // too. The two checks must agree about the lowest usable runtime.
+    expect(evaluatePluginCompatibility(peersOnly, {}, '0.2.1-rc.2')).toBeUndefined()
+    expect(evaluatePluginCompatibility(peersOnly, {}, '0.2.0-rc.2')).toBeDefined()
     expect(evaluatePluginCompatibility(peersOnly, {}, '0.2.1')).toBeUndefined()
     expect(evaluatePluginCompatibility(peersOnly, {}, '0.3.0')).toBeDefined()
     expect(evaluatePluginCompatibility(peersOnly, {}, '0.1.9')).toBeDefined()
@@ -130,7 +142,14 @@ describe('the vendored rule agrees with the installed Host', () => {
     // `engines.dsh`; that projection must therefore agree exactly.
     const peersOnly = { ...fields }
     delete peersOnly['engines']
-    expect(evaluatePluginCompatibility(peersOnly, {}, '0.2.0-rc.2')).toBeUndefined()
-    expect(installedCompatibility(peersOnly, '0.2.0-rc.2')).toBeUndefined()
+    // Both implementations must agree at the floor this release was verified
+    // on. The floor is 0.2.1-rc.2 rather than 0.2.0-rc.2 because the roster work
+    // depends on `dsh-tool-executor-native`, whose own range excludes rc.2.
+    expect(evaluatePluginCompatibility(peersOnly, {}, '0.2.1-rc.2')).toBeUndefined()
+    expect(installedCompatibility(peersOnly, '0.2.1-rc.2')).toBeUndefined()
+    // And they must agree that rc.2 is now OUT of range, rather than one rule
+    // accepting what the other rejects.
+    expect(evaluatePluginCompatibility(peersOnly, {}, '0.2.0-rc.2')).toBeDefined()
+    expect(installedCompatibility(peersOnly, '0.2.0-rc.2')).toBeDefined()
   })
 })

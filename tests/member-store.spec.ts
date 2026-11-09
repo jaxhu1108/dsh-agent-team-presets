@@ -39,6 +39,18 @@ afterEach(async () => {
   for (const path of temporary.splice(0)) await rm(path, { recursive: true, force: true })
 })
 
+/** Execute one tool call as one Agent, through the 0.2.1 batch API. */
+async function call(ctx: Context, agent: Agent, name: string, args: object = {}) {
+  const batch = await ctx.tools.execute({
+    calls: [{ type: 'tool-call', id: ToolCallId(`${name}-call`), name, arguments: JSON.stringify(args) }],
+    agent,
+    signal: new AbortController().signal,
+  })
+  const settlement = batch.results[0]
+  if (settlement === undefined) throw new Error(`the ${name} batch settled no result`)
+  return settlement.result
+}
+
 /** Compose a context with the loop and one Session root, without any storage. */
 async function bare(options: { teams?: ReturnType<typeof team>; selections?: { sessionId: string; teamId: string }[] } = {}) {
   const ctx = new Context()
@@ -89,13 +101,7 @@ describe('a deployment without the member store', () => {
     // refused, and the refusal happens before the Team service is asked.
     expect(h.ctx.tools.get('spawn_team_member', h.root)).toBeDefined()
     expect(h.ctx.tools.get('get_team_preset', h.root)).toBeDefined()
-    const spawn = await h.ctx.tools.execute({
-      callId: ToolCallId('no-store'),
-      name: 'spawn_team_member',
-      arguments: { member: 'reviewer', task: 'review' },
-      agent: h.root,
-      signal: new AbortController().signal,
-    })
+    const spawn = await call(h.ctx, h.root, 'spawn_team_member', { member: 'reviewer', task: 'review' })
     expect(spawn.isError).toBe(true)
     const text = spawn.content.flatMap(block => block.type === 'text' && block.text !== undefined ? [block.text] : []).join('')
     expect(text).toContain('durable member configuration store is unavailable')

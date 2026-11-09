@@ -57,8 +57,16 @@ describe('the Team Skill tool registration', () => {
       ['list_team_skills', {}],
       ['remove_team_skill', { skill_id: 'missing' }],
     ] as const) {
-      const result = await ctx.tools.execute({ callId: ToolCallId(name), name, arguments: args, agent: lead, signal: new AbortController().signal })
-      const text = result.content.flatMap(block => block.type === 'text' ? [block.text] : []).join('')
+      // DSH rc.3 dispatches a batch of tool calls; one call's result is
+      // `results[i].result`, one level deeper than the pre-batch shape.
+      const batch = await ctx.tools.execute({
+        calls: [{ type: 'tool-call', id: ToolCallId(name), name, arguments: JSON.stringify(args) }],
+        agent: lead,
+        signal: new AbortController().signal,
+      })
+      const settlement = batch.results[0]
+      if (settlement === undefined) throw new Error(`the ${name} batch settled no result`)
+      const text = settlement.result.content.flatMap(block => block.type === 'text' ? [block.text] : []).join('')
       expect(text).toContain(unavailable)
       if (name === 'remove_team_skill') expect(JSON.parse(text)).toMatchObject({ ok: false })
     }

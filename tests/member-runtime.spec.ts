@@ -33,6 +33,18 @@ afterEach(async () => {
   for (const ctx of contexts.splice(0).reverse()) await ctx.fiber.dispose()
 })
 
+/** Execute one tool call as one Agent, through the 0.2.1 batch API. */
+async function callTool(ctx: Context, agent: Agent, name: string, args: object = {}) {
+  const batch = await ctx.tools.execute({
+    calls: [{ type: 'tool-call', id: ToolCallId(`${name}-call`), name, arguments: JSON.stringify(args) }],
+    agent,
+    signal: new AbortController().signal,
+  })
+  const settlement = batch.results[0]
+  if (settlement === undefined) throw new Error(`the ${name} batch settled no result`)
+  return settlement.result
+}
+
 /** An in-memory stand-in for the mounted `storageDomain` service. */
 interface MemoryStore {
   /** The facility handed to `ctx.provide('storageDomain', …)`. */
@@ -215,9 +227,7 @@ describe('claiming one child', () => {
     expect(persona).toBe('UNIQUE_MEMBER_RULES')
     expect(assembly.sections.some(section => section.text === 'TEAM_SECTION')).toBe(true)
     // The strict guard denies a tool the frozen policy does not name.
-    const denied = await h.ctx.tools.execute({
-      callId: ToolCallId('denied'), name: 'write', arguments: {}, agent: h.child, signal: new AbortController().signal,
-    })
+    const denied = await callTool(h.ctx, h.child, 'write', {})
     expect(denied.isError).toBe(true)
     await h.members.close()
   })
@@ -234,9 +244,7 @@ describe('claiming one child', () => {
     const assembly = await h.ctx.systemPrompt.assemble(assembleContextFor(h.child))
     expect(assembly.sections.find(section => section.name === 'deployment:persona-prefix')?.text).not.toBe('UNIQUE_MEMBER_RULES')
     expect(assembly.sections.some(section => section.text === 'TEAM_SECTION')).toBe(false)
-    const allowed = await h.ctx.tools.execute({
-      callId: ToolCallId('still-allowed'), name: 'write', arguments: {}, agent: h.child, signal: new AbortController().signal,
-    })
+    const allowed = await callTool(h.ctx, h.child, 'write', {})
     expect(allowed.isError).toBe(false)
     await h.members.close()
   })

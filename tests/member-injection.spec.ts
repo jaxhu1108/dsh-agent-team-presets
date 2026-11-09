@@ -52,15 +52,16 @@ afterEach(async () => {
   }
 })
 
-/** Execute one tool as one Agent. */
+/** Execute one tool call as one Agent, through the 0.2.1 batch API. */
 async function call(ctx: Context, agent: Agent, name: string, args: object = {}) {
-  return ctx.tools.execute({
-    callId: ToolCallId(crypto.randomUUID()),
-    name,
-    arguments: args,
+  const batch = await ctx.tools.execute({
+    calls: [{ type: 'tool-call', id: ToolCallId(`${name}-call`), name, arguments: JSON.stringify(args) }],
     agent,
     signal: new AbortController().signal,
   })
+  const settlement = batch.results[0]
+  if (settlement === undefined) throw new Error(`the ${name} batch settled no result`)
+  return settlement.result
 }
 
 /** Concatenated text of one tool result. */

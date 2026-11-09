@@ -18,8 +18,21 @@ afterEach(async () => {
   for (const ctx of contexts.splice(0).reverse()) await ctx.fiber.dispose()
 })
 
+/**
+ * Execute one tool call and return its single settled outcome.
+ *
+ * DSH rc.3 dispatches a BATCH of tool calls, and one call's `ToolExecutionResult`
+ * is nested one level deeper than before (`results[i].result`).
+ */
 async function call(ctx: Context, agent: Agent, name: string, args: object = {}) {
-  return ctx.tools.execute({ callId: ToolCallId(crypto.randomUUID()), name, arguments: args, agent, signal: new AbortController().signal })
+  const batch = await ctx.tools.execute({
+    calls: [{ type: 'tool-call', id: ToolCallId(crypto.randomUUID()), name, arguments: JSON.stringify(args) }],
+    agent,
+    signal: new AbortController().signal,
+  })
+  const settlement = batch.results[0]
+  if (settlement === undefined) throw new Error(`the ${name} batch settled no result`)
+  return settlement.result
 }
 
 /** Text of one tool result, so a denial can be told apart from an unrelated failure. */
