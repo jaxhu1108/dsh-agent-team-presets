@@ -21,3 +21,6 @@ __pycache__/
 # Scratch planning notes for a working session: they quote internal session
 # ids and live only on the machine that wrote them.
 /PLAN-*.md
+
+# Packed release artifacts are rebuilt from source, never committed.
+*.tgz

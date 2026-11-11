@@ -15,8 +15,9 @@
 
 | 你的 DSH 版本 | 能不能用本版 | 说明 |
 |---|---|---|
-| `>= 0.2.1-rc.2 < 0.3.0` | ✅ 可以 | 插件声明的最低版本。rc.2 是下限，因为下面第 4 条那个依赖包自己就从 rc.2 起步 |
-| `0.2.0-rc.2` | ❌ 不行 | 插件管理器会拒绝安装/激活。要用就必须先升级 DSH |
+| `>= 0.2.2-rc.1 < 0.3.0` | ✅ 可以 | 插件声明的最低版本。`dsh-tool-executor-native` 在 npm 上只从 `0.2.2-alpha.2` 起存在 |
+| `0.2.1-rc.x` | ❌ 不行 | 该系列没有独立的 `dsh-tool-executor-native` 包，peer 无法满足 |
+| `0.2.0-rc.2` 及更早 | ❌ 不行 | 插件管理器会拒绝安装/激活。要用就必须先升级 DSH |
 | `>= 0.3.0` | ❌ 未验证 | 本版没有在 0.3 上跑过，不声明支持 |
 
 查版本：
@@ -25,7 +26,7 @@
 dsh --version
 ```
 
-`0.2.1-rc.2` 与 `0.2.1-rc.3` 的 API 在本插件用到的范围内是一致的，两个版本都能装。
+`0.2.2-rc.1` 已实测：版本校验通过、模块加载成功、六个关键包的所有符号（`setExecutor`、`guard`、`turnBoundaryOf`、`assembleContextFor`、`installModelSelection`、`createScope`、`NativeToolExecutor`）全部存在且签名未变。
 
 ### 别把两件事搞混
 
@@ -108,7 +109,9 @@ const dispose = agent.ctx.tools.setExecutor(new NativeToolExecutor(agent.ctx))
 - 但 executor 卸载之后，scope 就重新接受新的声明了。
 - 所以「先探一下这个 scope 收不收」的正确做法是：声明 → 立刻释放 → 再正式声明。本插件 `src/presentation.ts` 的 `prepareNativePresentation` 就是这么做的，注释里写清了为什么释放就够。
 
-**本插件因此新增了一个 peer 依赖**：`@deepseek-ai/dsh-tool-executor-native >= 0.2.1-rc.2`。这是 `engines.dsh` 下限从 `0.2.0-rc.2` 抬到 `0.2.1-rc.2` 的真正原因——不是随便抬的，是那个包自己的版本范围就这么写。
+**本插件因此新增了一个 peer 依赖**：`@deepseek-ai/dsh-tool-executor-native >= 0.2.2-rc.1`。这是 `engines.dsh` 下限抬到 `0.2.2-rc.1` 的真正原因——那个包在 npm 上只从 `0.2.2-alpha.2` 才开始存在，0.2.1-rc.x 时期 native 执行器还内建在 Runtime 里。
+
+> **v0.2.0 的教训**：当时把 peer 写成 `>=0.2.1-rc.2`，指向一个不存在的版本。npm 为凑区间去拉 `0.2.2-alpha.2`，而它的 `cordis ~4.0.6-alpha.1` 与 0.2.1-rc.x 的 `4.0.5` 冲突，安装直接失败。**peer 范围必须能对上真实存在的版本。**
 
 ### 3. 读「这一轮是不是用户发起的」换了 API
 
