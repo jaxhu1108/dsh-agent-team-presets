@@ -9,6 +9,8 @@ English | [中文](<README.md>)
 > **Version v0.2.1** · For DeepSeek Runtime `0.2.2-rc.1` and later 0.2.x
 >
 > Requires a compatible DeepSeek Harness deployment with Agent Teams enabled. This version targets the DSH `0.2.2-rc.1` API; see [Requirements](#requirements). Prebuilt artifacts are included, so installation does not require a source build.
+>
+> **This plugin's development was inspired by the original author, [bloodarea](https://github.com/bloodarea/dsh-agent-team-presets).** The team-preset data model, the nine built-in presets, the private Team Skill subsystem and the overall plugin skeleton all originate upstream. This repository is an adaptation fork that follows newer Runtime releases — not an independent work. See [CREDITS.md](<CREDITS.md>) for the full attribution.
 
 <a id="project-introduction"></a>
 ## Overview
@@ -442,7 +444,14 @@ npm run bundle
 
 Bug reports and pull requests are welcome at [GitHub Issues](https://github.com/jaxhu1108/dsh-agent-team-presets/issues) and [Pull requests](https://github.com/jaxhu1108/dsh-agent-team-presets/pulls).
 
-Thanks to **张灏焱** for contributing the `grilling` and `research` method Team Skills (PR #2), and to Matt Pocock for the upstream [skills](https://github.com/mattpocock/skills) they adapt (MIT, see [NOTICE](<NOTICE>)).
+**This plugin's development was inspired by the original author, [bloodarea](https://github.com/bloodarea/dsh-agent-team-presets).** That is a statement of fact, not a courtesy:
+
+- **The architecture and the ideas are upstream's.** A single Host row serving both as the bundle and as the plugin it composes, the captain-plus-members preset model, the nine built-in teams, and the whole mechanism that registers private Team Skills into one role's scope only — the original author devised these, and this fork carries them forward. What this branch contributes is **adaptation and documentation**: following the Runtime API migrations, fixing an executor lifetime defect, lowering the language and setup barrier, and adding captain personnel control. The division of labour is worth keeping straight.
+- **The upstream repository is untouched.** This repository's `origin` remote still points at it, but no commit has ever been pushed there.
+
+Full third-party attribution, license boundaries, and what to preserve if you branch from this repository are in [CREDITS.md](<CREDITS.md>).
+
+Other contributions: **张灏焱** contributed the `grilling` and `research` method Team Skills (PR #2); Matt Pocock authored the upstream [skills](https://github.com/mattpocock/skills) they adapt (MIT, see [NOTICE](<NOTICE>)).
 
 <a id="further-exploration"></a>
 ## Related resources

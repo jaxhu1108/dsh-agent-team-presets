@@ -1,6 +1,21 @@
 {
   "name": "dsh-agent-team-presets",
   "description": "Reusable Agent Team presets for DeepSeek Harness: a captain plus members with their own prompt, model, reasoning effort, and tools.",
+  "author": {
+    "name": "Jax",
+    "url": "https://github.com/jaxhu1108"
+  },
+  "contributors": [
+    {
+      "name": "bloodarea",
+      "url": "https://github.com/bloodarea/dsh-agent-team-presets",
+      "comment": "Original author: plugin architecture, team preset model, nine built-in presets, private Team Skill subsystem"
+    }
+  ],
+  "homepage": "https://github.com/jaxhu1108/dsh-agent-team-presets#readme",
+  "bugs": {
+    "url": "https://github.com/jaxhu1108/dsh-agent-team-presets/issues"
+  },
   "version": "0.2.1",
   "keywords": [
     "agent-presets",
@@ -154,6 +169,7 @@
     "NOTICE",
     "README.md",
     "README.en.md",
+    "CREDITS.md",
     "ADAPTATION.md",
     "examples"
   ]

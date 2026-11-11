@@ -10,6 +10,8 @@
 >
 > 这是一个 **DSH 插件**：给你的 DeepSeek Runtime 加一个可视化的「智能体团队预设」管理器。配好一套团队，从输入区一键选用，队长就能带着队员干活。
 >
+> **本插件由原作者 [bloodarea](https://github.com/bloodarea/dsh-agent-team-presets) 的创意与架构启发**：团队预设的数据模型、9 套内置预设、私有 Team Skill 子系统与整体插件骨架均源自上游项目。本仓库是在其基础上跟进新版 Runtime 的适配分支，不是独立创作。完整归属说明见 [CREDITS.md](<CREDITS.md>)。
+>
 > **仓库已包含预构建产物**，安装不需要编译源码。
 
 ---
@@ -472,12 +474,21 @@ TMPDIR=/dev/shm npm test
 - [内置预设 JSON](<contrib/default-presets>) —— 9 套团队的完整定义，可直接导入
 - [脱敏示例](<examples>) —— 一套带人事权限开关的完整示例
 - [随包技能](<assets/skills>) —— 4 个官方技能的 `SKILL.md`
+- [来源与致谢](<CREDITS.md>) —— 上游作者、本分支改动范围、三方素材与许可边界
 
 ---
 
 ## 致谢
 
-- 上游原作者 **bloodarea**（[bloodarea/dsh-agent-team-presets](https://github.com/bloodarea/dsh-agent-team-presets)）：本插件的基础框架、9 套内置预设、私有技能子系统均来自上游。本仓库是它的 **0.2.x 适配分支**，不改动上游。
+**这个插件的开发由原作者 [bloodarea](https://github.com/bloodarea/dsh-agent-team-presets) 启发。** 这句话不是客套，是事实陈述：
+
+- **架构与创意来自上游。** 一个 Host 行同时充当 bundle 与它组合的插件、队长 + 成员的预设数据模型、9 套内置预设、私有 Team Skill 按角色隔离注册的整套机制——这些是原作者想出来的，本仓库沿用。本分支做的是**适配与文档**：跟进 Runtime 的 API 迁移、修执行器生命周期缺陷、补上中文使用门槛、加队长人事权限。分工如此，不宜混淆。
+- **上游仓库未被改动。** 本仓库的 `origin` 仍指向上游，但从未向它推送过任何提交。
+
+完整的三方归属、许可边界、以及「基于本仓库再分支时该保留什么」，都写在 [CREDITS.md](<CREDITS.md>)。
+
+其余贡献：
+
 - **张灏焱**：贡献 `grilling` 与 `research` 两个方法型 Team Skill。
 - **Matt Pocock**：[skills](https://github.com/mattpocock/skills)，上述两个方法技能改编自它（MIT，见 [NOTICE](<NOTICE>)）。
 
