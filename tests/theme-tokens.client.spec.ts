@@ -86,11 +86,17 @@ const ALLOWED_TOKENS: ReadonlySet<string> = new Set([
   '--dsw-shadow-lv3',
   '--dsw-elevation-panel',
   '--dsw-elevation-prominent',
-  // radii (unchanged by the contract)
+  // radii — the full ladder the 0.2.x theme defines in `base.css` and ships in
+  // `@deepseek-ai/dsh-client-ui-theme@0.2.2-rc.1`:
+  //   xs 4px, sm 8px, md 12px, lg 16px, xl 20px, panel 28px
+  // Verified against the published theme bundle, not inferred from the source
+  // checkout, so the two lower rungs and the panel rung are allowed as well.
+  '--dsw-radius-xs',
   '--dsw-radius-sm',
   '--dsw-radius-md',
   '--dsw-radius-lg',
   '--dsw-radius-xl',
+  '--dsw-radius-panel',
 ])
 
 /**
