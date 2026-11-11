@@ -461,6 +461,8 @@ Other contributions: **张灏焱** contributed the `grilling` and `research` met
 - [Bundled skill documents](<assets/skills>) — Shipped skills (`SKILL.md` bundles) materialized into the private library.
 - [Method skill upstream](https://github.com/mattpocock/skills) — Source of `grilling` and `research` (MIT; pinned commit recorded in [NOTICE](<NOTICE>)).
 - [GitHub Releases](https://github.com/jaxhu1108/dsh-agent-team-presets/releases) — Published release packages.
+- [Origins and credits](<CREDITS.md>) — Upstream author, this fork's scope, third-party material and license boundaries.
+- [Background note](<NOTES.en.md>) — Where this plugin came from, what this branch did, and why attribution reads the way it does.
 
 <a id="license"></a>
 ## License
