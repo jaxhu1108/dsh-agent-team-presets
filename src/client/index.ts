@@ -7,8 +7,8 @@ import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-typert-protocol'
 // Type-only: the forwarded-Host-event key face `ctx.remote.$on` accepts.
 import type {} from '@deepseek-ai/dsh-api-remotes/client'
-import teamPresetsRemote from 'dsh-agent-team-presets/remote'
-import type {} from 'dsh-agent-team-presets/remote'
+import teamPresetsRemote from 'dsh-team-presets/remote'
+import type {} from 'dsh-team-presets/remote'
 // Type-only: pulls the locale plugin's Context merge (ctx.locale).
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 // Type-only: the ctx.configForms Context merge and the `settings.section` slot.

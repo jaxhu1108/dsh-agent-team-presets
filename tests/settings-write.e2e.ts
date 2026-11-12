@@ -108,17 +108,17 @@ function checkoutRoot(): string {
  */
 async function prepareProfile(cwd: string): Promise<void> {
   const profileDir = resolve(cwd, '.dsh', 'profiles', 'headless')
-  const pluginDir = resolve(profileDir, 'node_modules', 'dsh-agent-team-presets')
+  const pluginDir = resolve(profileDir, 'node_modules', 'dsh-team-presets')
   await mkdir(profileDir, { recursive: true })
   await mkdir(resolve(profileDir, 'node_modules'), { recursive: true })
   await symlink(resolve(import.meta.dirname, '..'), pluginDir, 'dir')
   await writeFile(resolve(profileDir, 'package.json'), `${JSON.stringify({
     name: 'dsh-profile-headless',
     private: true,
-    dependencies: { 'dsh-agent-team-presets': '*' },
+    dependencies: { 'dsh-team-presets': '*' },
     dsh: {
       profile: {
-        bundles: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-headless', 'dsh-agent-team-presets'],
+        bundles: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-headless', 'dsh-team-presets'],
       },
     },
   }, null, 2)}\n`)
@@ -140,7 +140,7 @@ test('a fresh settings revision fence lands and a stale one is refused with a co
     // `bootProductionProfile` resolves every bare package name an overlay
     // inserts, and every profile bundle, through `createRequire` anchors in the
     // checkout. `@deepseek-ai/dsh-experimental-agent-team` is only a peer
-    // dependency here and `dsh-agent-team-presets` is this repository, so both
+    // dependency here and `dsh-team-presets` is this repository, so both
     // must be reachable from the anchors: Node's resolution consults NODE_PATH,
     // which points at the checkout's install anchor and at the parent holding
     // this repository. Nothing is installed into the repository for the test.

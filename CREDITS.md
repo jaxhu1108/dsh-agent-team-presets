@@ -10,7 +10,7 @@
 
 **原项目**：[bloodarea/dsh-agent-team-presets](https://github.com/bloodarea/dsh-agent-team-presets)
 **原作者**：**bloodarea**
-**npm**：[dsh-agent-team-presets](https://www.npmjs.com/package/dsh-agent-team-presets)
+**npm**：[dsh-team-presets](https://www.npmjs.com/package/dsh-team-presets)
 
 这个插件的**全部设计起点**来自上游。具体来说，下列内容由原作者创作，本仓库沿用而非重写：
 

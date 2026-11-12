@@ -182,7 +182,7 @@ describe('Typert faces load without a schema dependency', () => {
     // fixture ever stops being dependency-isolated, this control fails and the
     // green results below stop being evidence.
     const broken = join(isolation, 'lib', 'typert.host.broken.js')
-    writeFileSync(broken, `import { z } from 'zod'\nexport const TYPERT = { package: 'dsh-agent-team-presets', face: 'host', schemas: [], invocations: [] }\nexport const marker = Boolean(z)\n`)
+    writeFileSync(broken, `import { z } from 'zod'\nexport const TYPERT = { package: 'dsh-team-presets', face: 'host', schemas: [], invocations: [] }\nexport const marker = Boolean(z)\n`)
     try {
       expect(cannotResolveInNode(pathToFileURL(broken).href)).toBe(true)
     } finally {
@@ -197,7 +197,7 @@ describe('Typert faces load without a schema dependency', () => {
     expect(remote.ok, `Remote face failed to load: ${remote.code}`).toBe(true)
     // The Host face exports exactly the contributor the loader looks for.
     expect(Object.keys(host.exports!)).toEqual(['TYPERT'])
-    expect(host.exports!.TYPERT).toMatchObject({ package: 'dsh-agent-team-presets', face: 'host', schemas: [] })
+    expect(host.exports!.TYPERT).toMatchObject({ package: 'dsh-team-presets', face: 'host', schemas: [] })
     // The Remote face keeps its named and default export.
     expect(remote.exports!.TYPERT_REMOTE).toBeDefined()
     expect(remote.exports!.default).toEqual(remote.exports!.TYPERT_REMOTE)
@@ -226,7 +226,7 @@ describe('Typert faces load without a schema dependency', () => {
       'teamSkills/resetSkill', 'teamSkills/restoreBuiltinBindings', 'teamSkills/scanImportFolder', 'teamSkills/unassignRole',
       'teamSkills/updateDependencies', 'teamSkills/writeFile',
     ])
-    const update = host.invocations.find(row => row.id === 'dsh-agent-team-presets#teamSkills/updateDependencies')
+    const update = host.invocations.find(row => row.id === 'dsh-team-presets#teamSkills/updateDependencies')
     // `TeamSkillDetailView | TeamSkillRefusalView` has no literal discriminator,
     // so Typert documents the missing JSON-Schema projection while still
     // validating and parsing the authored union. Pin that this stays a strict,
@@ -260,22 +260,22 @@ describe('Typert faces load without a schema dependency', () => {
     const execution = invocations.find(row => row.method === 'execution')
     expect(catalog).toBeDefined()
     expect(catalog).toMatchObject({
-      id: 'dsh-agent-team-presets#teamPresets/catalog',
+      id: 'dsh-team-presets#teamPresets/catalog',
       service: 'teamPresetsToolCatalog',
       namespace: 'teamPresets',
       invocation: { kind: 'direct' },
       parameters: [],
-      result: { spec: { mode: 'strict', typeSymbol: 'dsh-agent-team-presets/types#ToolCatalogValue' } },
+      result: { spec: { mode: 'strict', typeSymbol: 'dsh-team-presets/types#ToolCatalogValue' } },
     })
     // A direct invocation must not claim a stream mode.
     expect(catalog!.mode).toBeUndefined()
     expect(execution).toBeDefined()
     expect(execution).toMatchObject({
-      id: 'dsh-agent-team-presets#teamPresets/execution',
+      id: 'dsh-team-presets#teamPresets/execution',
       mode: 'stream',
       invocation: { kind: 'direct' },
       cancellation: { parameter: 'signal' },
-      result: { spec: { mode: 'strict', typeSymbol: 'dsh-agent-team-presets/types#TeamExecutionSnapshot' } },
+      result: { spec: { mode: 'strict', typeSymbol: 'dsh-team-presets/types#TeamExecutionSnapshot' } },
     })
   })
 })

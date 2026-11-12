@@ -68,7 +68,7 @@ await withBuildWorkspace(stageRoot, async (stage) => {
   cpSync(join(root, 'src'), join(pkg, 'src'), { recursive: true })
   mkdirSync(join(pkg, 'lib'), { recursive: true })
   // The Typert generator EMITS this face from the Host sources below; the file is
-  // only needed while the project is analyzed, because `dsh-agent-team-presets/remote`
+  // only needed while the project is analyzed, because `dsh-team-presets/remote`
   // must resolve for the client sources that import it. An earlier artifact is
   // reused when one exists, and an empty seed is written when it does not, so a
   // checkout with no `lib/` at all still builds. The seed is never read for its
@@ -113,7 +113,7 @@ await withBuildWorkspace(stageRoot, async (stage) => {
   const reactTypes = dirname(scopedRequire.resolve('@types/react/package.json'))
   Object.assign(paths, {
     '@deepseek-ai/dsh-experimental-client-ui-agent-team/client': [join(stage, 'packages/experimental/client-ui-agent-team/src/client/index.ts')],
-    'dsh-agent-team-presets/remote': [join(pkg, 'lib/typert.remote-client.d.ts')],
+    'dsh-team-presets/remote': [join(pkg, 'lib/typert.remote-client.d.ts')],
     react: [join(reactTypes, 'index.d.ts')], 'react/*': [join(reactTypes, '*.d.ts')],
     zod: [join(zodDir, 'index.d.ts')],
   })

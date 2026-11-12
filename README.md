@@ -1,4 +1,4 @@
-# dsh-agent-team-presets
+# dsh-team-presets
 
 <img src="banner_zh.png" alt="为 DeepSeek Runtime 配置可复用的智能体团队预设" width="100%">
 
@@ -102,6 +102,8 @@ dsh plugin --profile web add github:jaxhu1108/dsh-agent-team-presets#v0.2.2
 /你的路径/dsh-agent-team-presets
 ```
 
+> 这是**仓库目录名**，不是 npm 包名。本地路径安装指向仓库根目录即可，包名由其中的 `package.json` 决定（`dsh-team-presets`）。
+
 输入框支持：包名、`name@version`、`github:作者/仓库`、tarball 地址、本地绝对路径。
 
 ### 安装后确认
@@ -109,7 +111,7 @@ dsh plugin --profile web add github:jaxhu1108/dsh-agent-team-presets#v0.2.2
 按插件管理器的提示重新加载（或重启 DSH），然后：
 
 1. 打开 **设置 → 智能体团队预设**
-2. 确认插件详情显示名称 `dsh-agent-team-presets`、版本 `0.2.2`
+2. 确认插件详情显示名称 `dsh-team-presets`、版本 `0.2.2`
 3. 确认组件状态是「运行中」
 
 ### 注意事项

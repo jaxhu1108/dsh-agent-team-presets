@@ -22,7 +22,7 @@ if (output !== undefined) {
   mkdirSync(output)
 }
 const paths = ['src', 'tests', 'locale', 'cordis.patch.yml', 'README.md', 'README.zh.md']
-const rename = text => text.replaceAll('@deepseek-ai/dsh-experimental-agent-team-presets', 'dsh-agent-team-presets')
+const rename = text => text.replaceAll('@deepseek-ai/dsh-experimental-agent-team-presets', 'dsh-team-presets')
 const files = []
 function visit(path) {
   const abs = join(source, path)

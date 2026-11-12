@@ -92,7 +92,7 @@ That is how this chain stays traceable back to where it actually started.
 | Runtime support | `>= 0.2.2-rc.1 < 0.3.0` |
 | Tests | 762 cases / 761 passed / 1 skipped / 0 failed across 51 files |
 | Typecheck | host 0 local diagnostics / client 0 local diagnostics |
-| Distribution | GitHub Releases (not published to npm; the `dsh-agent-team-presets` name belongs to the original author) |
+| Distribution | GitHub Releases + npm (package name `dsh-team-presets`, distinct from the upstream `dsh-agent-team-presets`) |
 
 ---
 

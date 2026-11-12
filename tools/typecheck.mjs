@@ -18,7 +18,7 @@ const paths = Object.fromEntries(Object.entries(base.config.compilerOptions.path
 paths['@deepseek-ai/dsh-experimental-client-ui-agent-team/client'] = [join(harness, 'packages/experimental/client-ui-agent-team/src/client/index.ts')]
 paths['react'] = [join(reactTypes, 'index.d.ts')]
 paths['react/*'] = [join(reactTypes, '*.d.ts')]
-paths['dsh-agent-team-presets/remote'] = [join(root, 'lib/typert.remote-client.d.ts')]
+paths['dsh-team-presets/remote'] = [join(root, 'lib/typert.remote-client.d.ts')]
 for (const face of ['host', 'client']) {
   const config = ts.readConfigFile(join(root, `tsconfig.${face}.json`), ts.sys.readFile).config
   const parsed = ts.parseJsonConfigFileContent({ compilerOptions: {

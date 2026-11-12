@@ -92,7 +92,7 @@ MIT 允许修改与再分发，**但不允许抹掉原始署名**。本仓库不
 | Runtime 支持 | `>= 0.2.2-rc.1 < 0.3.0` |
 | 测试 | 762 用例 / 761 通过 / 1 跳过 / 0 失败，51 文件全过 |
 | 类型检查 | host 0 本地诊断 / client 0 本地诊断 |
-| 发布形态 | GitHub Releases（未发布到 npm；`dsh-agent-team-presets` 这个包名属于上游作者） |
+| 发布形态 | GitHub Releases + npm（包名 `dsh-team-presets`，与上游 `dsh-agent-team-presets` 区分） |
 
 ---
 

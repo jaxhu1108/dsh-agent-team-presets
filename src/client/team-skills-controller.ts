@@ -11,7 +11,7 @@
  */
 
 import type { Context } from '@deepseek-ai/cordis'
-import type {} from 'dsh-agent-team-presets/remote'
+import type {} from 'dsh-team-presets/remote'
 import type {
   TeamSkillDeleteView, TeamSkillDetailView, TeamSkillImportFile,
   TeamSkillLibraryView, TeamSkillRefusalView, TeamSkillScanView,

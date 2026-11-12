@@ -6,7 +6,7 @@
 # Settings page and the composer control.
 - insert:
     - id: agent-team-presets
-      name: 'dsh-agent-team-presets'
+      name: 'dsh-team-presets'
       config:
         teams: []
         selections: []

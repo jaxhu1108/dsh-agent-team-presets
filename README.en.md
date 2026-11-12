@@ -1,4 +1,4 @@
-# dsh-agent-team-presets
+# dsh-team-presets
 
 <img src="banner.png" alt="Reusable Agent Team presets for DeepSeek Harness" width="100%">
 
@@ -169,7 +169,7 @@ The plugin version (`0.2.2`) and the Harness version (`0.2.2-rc.1`, for example)
 Open **Global panels → Plugins → Add plugin**, paste the line below into **Package name or address**, and click **Install**:
 
 ```text
-dsh-agent-team-presets@0.2.2
+dsh-team-presets@0.2.2
 ```
 
 <!-- release-version: keep in sync with package.json version -->
@@ -203,16 +203,16 @@ dsh plugin --profile <profile> add github:jaxhu1108/dsh-agent-team-presets#v0.2.
 
 ### npm release channel
 
-GitHub and [npm](https://www.npmjs.com/package/dsh-agent-team-presets) are separate release channels. Verify the published version on npm before installing:
+GitHub and [npm](https://www.npmjs.com/package/dsh-team-presets) are separate release channels. Verify the published version on npm before installing:
 
 ```sh
-npm view dsh-agent-team-presets version
-dsh plugin --profile <profile> add dsh-agent-team-presets
+npm view dsh-team-presets version
+dsh plugin --profile <profile> add dsh-team-presets
 ```
 
 ### Verify and upgrade safely
 
-After installation, follow the plugin manager's reload/restart prompts and navigate to **Settings → Agent team presets**. Verify that details display `dsh-agent-team-presets`, version `0.2.2`, and a running component.
+After installation, follow the plugin manager's reload/restart prompts and navigate to **Settings → Agent team presets**. Verify that details display `dsh-team-presets`, version `0.2.2`, and a running component.
 
 - Back up profile settings, Team definitions, and Session selections before upgrading.
 - When migrating from a development link, remove `@deepseek-ai/dsh-experimental-agent-team-presets` first before enabling the community package.

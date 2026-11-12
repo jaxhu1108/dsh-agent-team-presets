@@ -1,5 +1,5 @@
 {
-  "name": "dsh-agent-team-presets",
+  "name": "dsh-team-presets",
   "description": "Reusable Agent Team presets for DeepSeek Harness: a captain plus members with their own prompt, model, reasoning effort, and tools.",
   "author": {
     "name": "Jax",

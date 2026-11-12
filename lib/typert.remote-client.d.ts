@@ -5,7 +5,7 @@ import type {
   TypertRemoteInfo,
   TypertRemoteMethod,
 } from '@deepseek-ai/dsh-typert-protocol'
-import type { TeamExecutionSnapshot, TeamSkillDeleteView, TeamSkillDependencies, TeamSkillDetailView, TeamSkillImportFile, TeamSkillImportFolderView, TeamSkillLibraryView, TeamSkillRefusalView, TeamSkillScanView, ToolCatalogValue } from 'dsh-agent-team-presets/types'
+import type { TeamExecutionSnapshot, TeamSkillDeleteView, TeamSkillDependencies, TeamSkillDetailView, TeamSkillImportFile, TeamSkillImportFolderView, TeamSkillLibraryView, TeamSkillRefusalView, TeamSkillScanView, ToolCatalogValue } from 'dsh-team-presets/types'
 
 declare module '@deepseek-ai/dsh-typert-protocol' {
   interface TypertRemoteNamespace$7465616d50726573657473 {

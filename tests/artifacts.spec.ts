@@ -10,7 +10,7 @@ describe('built deliverables', () => {
     runInNewContext(readFileSync(new URL('../lib/client.js', import.meta.url), 'utf8'), {
       window: { __ModuleLoader__: { load: (row: typeof registration) => { registration = row } } },
     })
-    expect(registration?.id).toBe('dsh-agent-team-presets')
+    expect(registration?.id).toBe('dsh-team-presets')
     const requests: string[] = []
     const exports = registration!.factory(id => {
       requests.push(id)
@@ -36,7 +36,7 @@ describe('built deliverables', () => {
       TYPERT_REMOTE: { spec: { package: string; methods: Record<string, Record<string, any>> } }
     }
     const methods = remote.TYPERT_REMOTE.spec.methods
-    expect(remote.TYPERT_REMOTE.spec.package).toBe('dsh-agent-team-presets')
+    expect(remote.TYPERT_REMOTE.spec.package).toBe('dsh-team-presets')
     const descriptors = Object.entries(methods).map(([key, value]) => ({ ...value, method: key.slice(key.indexOf('/') + 1) }))
     // The two original endpoints must be present; the Team Skill library adds
     // its own methods beside them.
