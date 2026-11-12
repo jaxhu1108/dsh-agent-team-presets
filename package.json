@@ -16,7 +16,7 @@
   "bugs": {
     "url": "https://github.com/jaxhu1108/dsh-agent-team-presets/issues"
   },
-  "version": "0.2.3",
+  "version": "0.2.4",
   "keywords": [
     "agent-presets",
     "agent-teams",
@@ -173,6 +173,8 @@
     "NOTES.en.md",
     "NOTES.md",
     "ADAPTATION.md",
-    "examples"
+    "examples",
+    "DIFFERENCES.md",
+    "DIFFERENCES.en.md"
   ]
 }

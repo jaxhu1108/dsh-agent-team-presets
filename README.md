@@ -6,7 +6,7 @@
 
 中文 | [English](<README.en.md>)
 
-> **版本 v0.2.3** · 适配 DeepSeek Runtime `0.2.2-rc.1` 及以后的 0.2.x
+> **版本 v0.2.4** · 适配 DeepSeek Runtime `0.2.2-rc.1` 及以后的 0.2.x
 >
 > 这是一个 **DSH 插件**：给你的 DeepSeek Runtime 加一个可视化的「智能体团队预设」管理器。配好一套团队，从输入区一键选用，队长就能带着队员干活。
 >
@@ -14,7 +14,11 @@
 >
 > **仓库已包含预构建产物**，安装不需要编译源码。
 
-> **v0.2.3 界面更新**：设置页与输入区选择器的圆角全部改用主题 token（`--dsw-radius-*`），并补齐了圆形元件与胶囊标签的 `corner-shape: round` 声明。此前插件自带 12 种不同的圆角数值（5~17px），设置页看起来不够整齐；现在统一到宿主的六档梯度，与设置页其它区域一致。
+> **本分支与上游不同，请先看对照**：这个仓库是**独立维护的变体**，不是上游的升级版。多做了工具策略体系、团队级成员管理开关、npm 发布渠道与圆角统一；上游有而这里没有的是「会话内按成员切模型」。
+>
+> 两者摆平对照，自己判断用哪个 → **[DIFFERENCES.md](<DIFFERENCES.md>)**（[English](<DIFFERENCES.en.md>)）
+>
+> **界面**：设置页与输入区圆角已统一到主题 token（`--dsw-radius-*`），4 处全圆元件补齐 `corner-shape: round`。
 
 ---
 
@@ -71,10 +75,10 @@ dsh --version
 
 ### 版本号别搞混
 
-- **插件版本**：本版 `0.2.3`
+- **插件版本**：本版 `0.2.4`
 - **Runtime 版本**：例如 `0.2.2-rc.1`
 
-两条完全独立的版本线。插件 `0.2.3` 跑在 Runtime `0.2.2-rc.1` 上是**正常组合**，不是版本不匹配。
+两条完全独立的版本线。插件 `0.2.4` 跑在 Runtime `0.2.2-rc.1` 上是**正常组合**，不是版本不匹配。
 
 ---
 
@@ -89,7 +93,7 @@ dsh plugin --profile web add dsh-team-presets
 把 `web` 换成你实际的 profile 名。要固定本版：
 
 ```sh
-dsh plugin --profile web add dsh-team-presets@0.2.3
+dsh plugin --profile web add dsh-team-presets@0.2.4
 ```
 
 > **为什么推荐 npm**：只有从 registry 安装的插件才会被插件管理器**自动检测新版本**。管理器只放行 `kind === 'registry'` 的来源（见 `plugin-manager/src/index.ts` 的 `updateRefusal()`），`github:` 会被判定成 `kind: 'git'`，永远不会提示更新。想有更新提示，就用这条。
@@ -103,7 +107,7 @@ dsh plugin --profile web add github:jaxhu1108/dsh-agent-team-presets
 要固定某个发布 tag：
 
 ```sh
-dsh plugin --profile web add github:jaxhu1108/dsh-agent-team-presets#v0.2.3
+dsh plugin --profile web add github:jaxhu1108/dsh-agent-team-presets#v0.2.4
 ```
 
 > 这条路径**不会**收到更新提示，新版本要手动重装。适合想跟仓库最新提交、或 npm 不可达的场景。
@@ -127,7 +131,7 @@ dsh plugin --profile web add github:jaxhu1108/dsh-agent-team-presets#v0.2.3
 按插件管理器的提示重新加载（或重启 DSH），然后：
 
 1. 打开 **设置 → 智能体团队预设**
-2. 确认插件详情显示名称 `dsh-team-presets`、版本 `0.2.3`
+2. 确认插件详情显示名称 `dsh-team-presets`、版本 `0.2.4`
 3. 确认组件状态是「运行中」
 
 ### 注意事项

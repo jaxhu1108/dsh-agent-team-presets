@@ -33,6 +33,7 @@ import { isPresetMemberProvider, memberProviderMarker, registerMemberProviders }
 import { installNativePresentation, personaBaseline, prepareNativePresentation, readWire } from './presentation.ts'
 import type { Config } from './config.ts'
 import { teamSettingsReconcile } from './settings-reconcile.ts'
+import { registerBuiltinSkill } from './builtin-skill.ts'
 import { hasTeamApplicationMarker, isSessionRoot, TeamExecutionMonitor, teammatesBusy } from './execution.ts'
 import { RUN_CODE_NAME } from '@deepseek-ai/dsh-tools'
 import type { SessionId } from '@deepseek-ai/dsh-session'
@@ -1054,6 +1055,12 @@ export function apply(ctx: Context, config: Config): void {
   const settingsReconcile = teamSettingsReconcile(ctx, config, NAMESPACE)
   const reconcileTimer = setTimeout(() => { if (!disposed) void settingsReconcile.request() }, 0)
   ctx.effect(() => () => { clearTimeout(reconcileTimer); settingsReconcile.dispose() }, 'agent-team-presets: settings reconcile readiness')
+
+  // The troubleshooting guide ships with the installation, not with a Team: a
+  // Session that selected no Team, or whose Team failed to apply, is exactly the
+  // Session that needs it. Registration is owned by this activation's context,
+  // so an unload removes the skill with the rest of the plugin.
+  registerBuiltinSkill(ctx)
 
   for (const agent of ctx.agents.list()) {
     if (isSessionRoot(agent)) reconcile(agent)
