@@ -175,24 +175,30 @@ dsh-team-presets@0.2.3
 <!-- release-version: keep in sync with package.json version -->
 
 - **Registry** selects which npm source the download comes from. **Default registry** uses pnpm's own configuration. Pick **Official npm registry** to bypass a mirror, or **Custom address** for an internal or cloud mirror.
-- `@0.2.2` pins the version; omit it to install the latest published package.
+- `@0.2.3` pins the version; omit it to install the latest published package.
 - The field accepts package names, `name@version`, `github:owner/repo`, tarball URLs, or absolute filesystem paths.
 - This package declares `dsh.bundle`, so the plugin manager automatically registers it as a profile bundle layer; do not add a loader entry by hand.
 - Once installed, reinstalling the same package identity is blocked. To switch sources (e.g. from GitHub to npm), uninstall first, then install the new spec.
 - After installation, reload or restart as prompted.
 
-### Install from GitHub
+### Install from npm (recommended — update checks work)
 
-To receive repository update notifications:
+```sh
+dsh plugin --profile <profile> add dsh-team-presets
+```
+
+Replace `<profile>` with your active profile (e.g. `web` or `desktop`). To pin this release:
+
+```sh
+dsh plugin --profile <profile> add dsh-team-presets@0.2.3
+```
+
+> **Why npm is recommended**: only registry installs are checked for newer versions. The plugin manager admits update candidates solely when the saved source parses as a registry spec (`updateRefusal()` in `plugin-manager/src/index.ts`); a `github:` spec parses as `kind: 'git'` and is refused before any version lookup. Install from GitHub and you will never be offered an update.
+
+### Install from GitHub (no update notifications)
 
 ```sh
 dsh plugin --profile <profile> add github:jaxhu1108/dsh-agent-team-presets
-```
-
-Replace `<profile>` with your active profile (e.g. `web` or `desktop`):
-
-```sh
-dsh plugin --profile web add github:jaxhu1108/dsh-agent-team-presets
 ```
 
 To pin the v0.2.3 release tag:
@@ -201,14 +207,7 @@ To pin the v0.2.3 release tag:
 dsh plugin --profile <profile> add github:jaxhu1108/dsh-agent-team-presets#v0.2.3
 ```
 
-### npm release channel
-
-GitHub and [npm](https://www.npmjs.com/package/dsh-team-presets) are separate release channels. Verify the published version on npm before installing:
-
-```sh
-npm view dsh-team-presets version
-dsh plugin --profile <profile> add dsh-team-presets
-```
+> This channel never offers updates; reinstalling by hand is the only way to move to a newer release. Use it when you want to track repository commits, or when the npm registry is unreachable from your network.
 
 ### Verify and upgrade safely
 

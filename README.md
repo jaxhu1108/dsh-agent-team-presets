@@ -80,21 +80,37 @@ dsh --version
 
 ## 安装
 
-### 方式一：从 GitHub 安装（推荐，能收到更新）
+### 方式一：从 npm 安装（推荐，能收到更新提示）
 
 ```sh
-dsh plugin --profile web add github:jaxhu1108/dsh-agent-team-presets
+dsh plugin --profile web add dsh-team-presets
 ```
 
 把 `web` 换成你实际的 profile 名。要固定本版：
 
 ```sh
+dsh plugin --profile web add dsh-team-presets@0.2.3
+```
+
+> **为什么推荐 npm**：只有从 registry 安装的插件才会被插件管理器**自动检测新版本**。管理器只放行 `kind === 'registry'` 的来源（见 `plugin-manager/src/index.ts` 的 `updateRefusal()`），`github:` 会被判定成 `kind: 'git'`，永远不会提示更新。想有更新提示，就用这条。
+
+### 方式二：从 GitHub 安装（不会提示更新）
+
+```sh
+dsh plugin --profile web add github:jaxhu1108/dsh-agent-team-presets
+```
+
+要固定某个发布 tag：
+
+```sh
 dsh plugin --profile web add github:jaxhu1108/dsh-agent-team-presets#v0.2.3
 ```
 
+> 这条路径**不会**收到更新提示，新版本要手动重装。适合想跟仓库最新提交、或 npm 不可达的场景。
+>
 > 仓库是**私有**的。拉取前你本机得有 GitHub 凭据（`gh auth login`、SSH key 或 `.netrc` 任选其一），否则会拉取失败。
 
-### 方式二：在 GUI 里点（装本地包）
+### 方式三：在 GUI 里点（装本地包）
 
 打开 **全局面板 → 插件 → 添加插件**，在「包名或地址」里粘贴本地绝对路径：
 
