@@ -6,7 +6,7 @@
 
 中文 | [English](<README.en.md>)
 
-> **版本 v0.2.2** · 适配 DeepSeek Runtime `0.2.2-rc.1` 及以后的 0.2.x
+> **版本 v0.2.3** · 适配 DeepSeek Runtime `0.2.2-rc.1` 及以后的 0.2.x
 >
 > 这是一个 **DSH 插件**：给你的 DeepSeek Runtime 加一个可视化的「智能体团队预设」管理器。配好一套团队，从输入区一键选用，队长就能带着队员干活。
 >
@@ -14,7 +14,7 @@
 >
 > **仓库已包含预构建产物**，安装不需要编译源码。
 
-> **v0.2.2 界面更新**：设置页与输入区选择器的圆角全部改用主题 token（`--dsw-radius-*`），并补齐了圆形元件与胶囊标签的 `corner-shape: round` 声明。此前插件自带 12 种不同的圆角数值（5~17px），设置页看起来不够整齐；现在统一到宿主的六档梯度，与设置页其它区域一致。
+> **v0.2.3 界面更新**：设置页与输入区选择器的圆角全部改用主题 token（`--dsw-radius-*`），并补齐了圆形元件与胶囊标签的 `corner-shape: round` 声明。此前插件自带 12 种不同的圆角数值（5~17px），设置页看起来不够整齐；现在统一到宿主的六档梯度，与设置页其它区域一致。
 
 ---
 
@@ -71,10 +71,10 @@ dsh --version
 
 ### 版本号别搞混
 
-- **插件版本**：本版 `0.2.2`
+- **插件版本**：本版 `0.2.3`
 - **Runtime 版本**：例如 `0.2.2-rc.1`
 
-两条完全独立的版本线。插件 `0.2.2` 跑在 Runtime `0.2.2-rc.1` 上是**正常组合**，不是版本不匹配。
+两条完全独立的版本线。插件 `0.2.3` 跑在 Runtime `0.2.2-rc.1` 上是**正常组合**，不是版本不匹配。
 
 ---
 
@@ -89,7 +89,7 @@ dsh plugin --profile web add github:jaxhu1108/dsh-agent-team-presets
 把 `web` 换成你实际的 profile 名。要固定本版：
 
 ```sh
-dsh plugin --profile web add github:jaxhu1108/dsh-agent-team-presets#v0.2.2
+dsh plugin --profile web add github:jaxhu1108/dsh-agent-team-presets#v0.2.3
 ```
 
 > 仓库是**私有**的。拉取前你本机得有 GitHub 凭据（`gh auth login`、SSH key 或 `.netrc` 任选其一），否则会拉取失败。
@@ -111,7 +111,7 @@ dsh plugin --profile web add github:jaxhu1108/dsh-agent-team-presets#v0.2.2
 按插件管理器的提示重新加载（或重启 DSH），然后：
 
 1. 打开 **设置 → 智能体团队预设**
-2. 确认插件详情显示名称 `dsh-team-presets`、版本 `0.2.2`
+2. 确认插件详情显示名称 `dsh-team-presets`、版本 `0.2.3`
 3. 确认组件状态是「运行中」
 
 ### 注意事项

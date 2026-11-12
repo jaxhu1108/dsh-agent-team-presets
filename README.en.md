@@ -6,13 +6,13 @@
 
 English | [中文](<README.md>)
 
-> **Version v0.2.2** · For DeepSeek Runtime `0.2.2-rc.1` and later 0.2.x
+> **Version v0.2.3** · For DeepSeek Runtime `0.2.2-rc.1` and later 0.2.x
 >
 > Requires a compatible DeepSeek Harness deployment with Agent Teams enabled. This version targets the DSH `0.2.2-rc.1` API; see [Requirements](#requirements). Prebuilt artifacts are included, so installation does not require a source build.
 >
 > **This plugin's development was inspired by the original author, [bloodarea](https://github.com/bloodarea/dsh-agent-team-presets).** The team-preset data model, the nine built-in presets, the private Team Skill subsystem and the overall plugin skeleton all originate upstream. This repository is an adaptation fork that follows newer Runtime releases — not an independent work. See [CREDITS.md](<CREDITS.md>) for the full attribution.
 
-> **v0.2.2 interface update**: every corner radius in the settings page and composer picker now resolves through the theme's `--dsw-radius-*` tokens, and circular elements plus capsule tags declare `corner-shape: round`. The plugin previously carried twelve distinct hard-coded radii (5–17px), which read as uneven; the surfaces now follow the host's six-rung ladder and match the rest of the settings UI.
+> **v0.2.3 interface update**: every corner radius in the settings page and composer picker now resolves through the theme's `--dsw-radius-*` tokens, and circular elements plus capsule tags declare `corner-shape: round`. The plugin previously carried twelve distinct hard-coded radii (5–17px), which read as uneven; the surfaces now follow the host's six-rung ladder and match the rest of the settings UI.
 
 <a id="project-introduction"></a>
 ## Overview
@@ -159,7 +159,7 @@ The screenshots illustrate the v0.2.x settings interface, Team Skill management,
 - **A Web or Desktop profile with Settings and the required client services.** Install into the profile you actually use, typically `web` for the Web GUI or `desktop` for Desktop.
 - **Durable storage and a continuable subagent backend for member execution.** Member creation is refused if the storage domain or selected execution backend is unavailable. The default backend names are `spawn` and `fork`.
 
-The plugin version (`0.2.2`) and the Harness version (`0.2.2-rc.1`, for example) are separate version lines.
+The plugin version (`0.2.3`) and the Harness version (`0.2.2-rc.1`, for example) are separate version lines.
 
 <a id="use-this-package"></a>
 ## Install and upgrade
@@ -169,7 +169,7 @@ The plugin version (`0.2.2`) and the Harness version (`0.2.2-rc.1`, for example)
 Open **Global panels → Plugins → Add plugin**, paste the line below into **Package name or address**, and click **Install**:
 
 ```text
-dsh-team-presets@0.2.2
+dsh-team-presets@0.2.3
 ```
 
 <!-- release-version: keep in sync with package.json version -->
@@ -195,10 +195,10 @@ Replace `<profile>` with your active profile (e.g. `web` or `desktop`):
 dsh plugin --profile web add github:jaxhu1108/dsh-agent-team-presets
 ```
 
-To pin the v0.2.2 release tag:
+To pin the v0.2.3 release tag:
 
 ```sh
-dsh plugin --profile <profile> add github:jaxhu1108/dsh-agent-team-presets#v0.2.2
+dsh plugin --profile <profile> add github:jaxhu1108/dsh-agent-team-presets#v0.2.3
 ```
 
 ### npm release channel
@@ -212,7 +212,7 @@ dsh plugin --profile <profile> add dsh-team-presets
 
 ### Verify and upgrade safely
 
-After installation, follow the plugin manager's reload/restart prompts and navigate to **Settings → Agent team presets**. Verify that details display `dsh-team-presets`, version `0.2.2`, and a running component.
+After installation, follow the plugin manager's reload/restart prompts and navigate to **Settings → Agent team presets**. Verify that details display `dsh-team-presets`, version `0.2.3`, and a running component.
 
 - Back up profile settings, Team definitions, and Session selections before upgrading.
 - When migrating from a development link, remove `@deepseek-ai/dsh-experimental-agent-team-presets` first before enabling the community package.
