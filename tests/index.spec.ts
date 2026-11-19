@@ -12,7 +12,7 @@ import { TeamSkills } from '../src/team-skills/index.ts'
 import { MemberRuntime } from '../src/member-runtime.ts'
 import type { Config } from '../src/config.ts'
 import { BUILTIN_TEAM_IDS } from '../src/builtin-teams.ts'
-import { TeamId } from '@deepseek-ai/dsh-experimental-agent-team'
+import { TeamId } from '@deepseek-ai/dsh-agent-team'
 import TeamPresetsToolCatalog from '../src/tool-catalog.ts'
 import { routedCaptain, team } from './fixtures/team-presets.ts'
 import type { TeamPreset, TeamSelectionRecord } from '../src/types.ts'
@@ -92,12 +92,21 @@ async function setup(
   // The plugin injects the subagent service, exactly as a deployment that
   // composes Teams provides it. These cases never create a member, so the
   // stand-in only has to exist for the mount to reach its own scan.
+  // rc.3 reads tree identity from the subagent service, so the double must
+  // answer `rootOf`/`namesOf`/`startActivation` as the real one does.
   ctx.provide('subagents', {
     registerProvider: () => () => {},
     getProvider: () => undefined,
     list: () => [],
     resolveMaxDepth: () => 2,
-    drainChildren: async () => {},
+    rootOf: (agent: Agent) => {
+      if (agent.session.header.origin === 'subagent') throw Object.assign(new Error('fixture child is unpublished'), { code: 'UNAUTHORIZED' })
+      return agent
+    },
+    namesOf: () => ({ self: 'lead' }),
+    startActivation: async () => { throw new Error('the subagent double does not run children') },
+    interrupt: () => {},
+    drainDescendants: async () => {},
   })
   const configure = vi.fn(() => () => {})
   const update = vi.fn(async (_ns: string, _patch: { teams: TeamPreset[]; seededDefaults: string[] }) => {})

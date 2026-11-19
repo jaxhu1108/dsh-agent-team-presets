@@ -11,7 +11,7 @@
  *    Team service is asked to create it, keyed by `(rootSessionId, name)` —
  *    the identity the roster already persists;
  * 2. on the creation edge, resolves that record through the official
- *    `tryMembership` identity and installs the member-scoped route, persona,
+ *    reserved child identity and installs the member-scoped route, persona,
  *    team context, and strict tool policy before creation resolves;
  * 3. re-installs for every later residency (a finished member is cold-resumed
  *    from its durable descriptor and re-emits `agent/created`);
@@ -32,6 +32,7 @@ import { installModelSelection } from '@deepseek-ai/dsh-agent'
 import { ReasoningEffortId } from '@deepseek-ai/dsh-llm'
 import { PERSONA_PREFIX_SECTION } from '@deepseek-ai/dsh-system-prompt'
 import { foldSubagentDescriptor } from '@deepseek-ai/dsh-subagent'
+import type { SubagentActivation } from '@deepseek-ai/dsh-subagent'
 import { MEMBER_FRESH_PROVIDER, MEMBER_FORK_PROVIDER } from './member-identity.ts'
 import type {} from '@deepseek-ai/dsh-system-prompt'
 import { openMemberStore } from './member-store.ts'
@@ -63,6 +64,8 @@ export interface MemberMembership {
 export interface MemberIntent {
   /** The Team Lead Agent summoning the member. */
   readonly root: Agent
+  /** Reserved child identity, persisted before the Host starts creation. */
+  readonly childId?: string
   /** Exact instance target the member is created under. */
   readonly target: string
   /** Team preset identity the snapshot comes from. */
@@ -153,6 +156,8 @@ export class MemberRuntime {
   private readonly failures = new Map<string, string>()
   /** Whole member-creation transactions admitted by this activation. */
   private readonly inFlight = new Set<Promise<unknown>>()
+  /** Live creations this activation started, so teardown can stop exactly them. */
+  private readonly activations = new Set<SubagentActivation>()
   private closed = false
 
   /**
@@ -214,6 +219,7 @@ export class MemberRuntime {
       intentId: randomUUID(),
       rootSessionId: intent.root.id,
       memberName: intent.target,
+      ...intent.childId === undefined ? {} : { childSessionId: intent.childId },
       teamId: intent.teamId,
       ...intent.roleId === undefined || intent.roleId === '' ? {} : { roleId: intent.roleId },
       displayName: intent.displayName,
@@ -251,6 +257,25 @@ export class MemberRuntime {
    * @returns whether the member was installed, is not plugin-managed, or is managed but unusable.
    * @throws when a managed member's scopes cannot be installed completely.
    */
+  /**
+   * Identify a member this plugin created by the child identity it reserved.
+   *
+   * rc.3 publishes a child only after its creation resolves, so the creation
+   * edge cannot use the tree identity: the durable snapshot written before
+   * creation is the only thing that names this exact member there.
+   * @param agent - the Agent entering the registry.
+   * @returns its Team root and member name, or undefined when no snapshot owns it.
+   */
+  membershipFor(agent: Agent): MemberMembership | undefined {
+    if (this.state?.kind !== 'ready') return undefined
+    const record = this.state.store.values().find(row => row.childSessionId === agent.id)
+    if (record === undefined) return undefined
+    const root = this.ctx.agents.get(record.rootSessionId as Agent['id'])
+    if (root === undefined || root.session.header.origin === 'subagent'
+      || agent.session.header.parentSession !== root.id) return undefined
+    return { root, name: record.memberName }
+  }
+
   claim(agent: Agent, membership: MemberMembership, managed: boolean): MemberClaim {
     const installed = this.installations.get(agent)
     if (installed !== undefined) return { kind: 'installed', record: installed.record }
@@ -434,6 +459,29 @@ export class MemberRuntime {
   /** Number of live residencies currently carrying managed registrations. */
   get installedCount(): number {
     return this.installations.size
+  }
+
+  /**
+   * Retain one creation receipt so teardown stops the epoch this activation started.
+   * @param activation - the receipt `startActivation` returned.
+   * @returns the same receipt.
+   */
+  track<T extends SubagentActivation>(activation: T): T {
+    this.activations.add(activation)
+    return activation
+  }
+
+  /**
+   * Stop every epoch this activation started.
+   *
+   * A cold-restored residency has no receipt here: rc.3 exposes no selective
+   * disposal for one, so only its current work is interrupted.
+   * @returns resolution once every retained epoch has settled.
+   */
+  async disposeActivations(): Promise<void> {
+    const started = [...this.activations]
+    this.activations.clear()
+    await Promise.allSettled(started.map(activation => activation.dispose()))
   }
 
   /**

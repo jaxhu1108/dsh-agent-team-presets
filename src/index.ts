@@ -20,7 +20,9 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/cordis-plugin-loader'
-import type {} from '@deepseek-ai/dsh-experimental-agent-team'
+import type {} from '@deepseek-ai/dsh-agent-team'
+import type {} from '@deepseek-ai/dsh-session-projection'
+import type {} from '@deepseek-ai/dsh-subagent'
 import type {} from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-settings'
 import type {} from '@deepseek-ai/dsh-system-prompt'
@@ -35,8 +37,8 @@ import type { Config } from './config.ts'
 import { teamSettingsReconcile } from './settings-reconcile.ts'
 import { registerBuiltinSkill } from './builtin-skill.ts'
 import { hasTeamApplicationMarker, isSessionRoot, TeamExecutionMonitor, teammatesBusy } from './execution.ts'
+import { membershipOf } from './team-runtime.ts'
 import { RUN_CODE_NAME } from '@deepseek-ai/dsh-tools'
-import type { SessionId } from '@deepseek-ai/dsh-session'
 import { registerPresetTools } from './preset-tools.ts'
 import { CAPTAIN_ROLE, TeamSkills, resolveSkillRoot, roleOfMember } from './team-skills/index.ts'
 import type { AgentSkillSync } from './team-skills/index.ts'
@@ -63,7 +65,7 @@ const NAMESPACE = 'agent-team-presets'
  * join, the prompt sections its captain adds, the Agents service whose turn
  * boundary authenticates a preset write, and the settings document it owns.
  */
-export const inject = ['agents', 'agentTeams', 'tools', 'systemPrompt', 'settings', 'subagents']
+export const inject = ['agents', 'tools', 'systemPrompt', 'sessionProjections', 'settings', 'subagents']
 
 /** Diagnostics prefix for the failures this plugin only reports. */
 const LOG = 'agent-team-presets'
@@ -292,9 +294,13 @@ export function apply(ctx: Context, config: Config): void {
     // A child carrying this plugin's alias is preset-managed even when no
     // snapshot can be read, so it can never be mistaken for a native teammate.
     const managed = isPresetMemberProvider(memberProviderMarker(agent))
-    let membership: ReturnType<typeof ctx.agentTeams.tryMembership>
+    let membership: ReturnType<typeof membershipOf>
     try {
-      membership = ctx.agentTeams.tryMembership(agent)
+      // A creation this plugin started reserved the child identity before the
+      // Host created it, so the durable snapshot identifies that member here;
+      // the published tree identity is the fallback for a cold resume.
+      const recorded = members.membershipFor(agent)
+      membership = recorded === undefined ? membershipOf(ctx, agent) : { ...recorded, role: 'teammate' as const }
     } catch (error: unknown) {
       // A marked child whose Team identity cannot be resolved is never explained
       // away as an ordinary child: it is refused before its first request.
@@ -504,8 +510,7 @@ export function apply(ctx: Context, config: Config): void {
    */
   const rootOf = (agent: Agent): Agent | undefined => {
     if (isSessionRoot(agent)) return agent
-    const membership = ctx.agentTeams.tryMembership(agent)
-    return membership?.role === 'teammate' ? membership.root : undefined
+    return members.membershipFor(agent)?.root ?? membershipOf(ctx, agent)?.root
   }
 
   /**
@@ -965,13 +970,14 @@ export function apply(ctx: Context, config: Config): void {
   }
 
   /**
-   * Stop the members this plugin owns, grouped by their exact Team root.
+   * Stop the members this plugin owns.
    *
-   * Only the children this activation recorded are drained: draining a whole
+   * Only creations this activation started are disposed: draining a whole
    * descendant tree would also stop upstream-owned work the plugin never
-   * installed, and the Team service offers the selective call for exactly this
-   * case.
-   * @returns resolution once every recorded child has been asked to stop.
+   * installed. A cold-restored residency has no receipt here, so its current
+   * work is interrupted instead and its Agent-owned policies stay until the
+   * Agent itself is disposed.
+   * @returns resolution once every recorded member has been asked to stop.
    */
   const drainManagedChildren = async (): Promise<void> => {
     const subagents = ctx.get('subagents')
@@ -984,19 +990,15 @@ export function apply(ctx: Context, config: Config): void {
       }
       return
     }
-    const byRoot = new Map<Agent, SessionId[]>()
+    await members.disposeActivations()
     for (const agent of [...managedMembers]) {
-      const membership = ctx.agentTeams.tryMembership(agent)
-      if (membership?.role !== 'teammate') continue
-      byRoot.set(membership.root, [...byRoot.get(membership.root) ?? [], agent.id])
-    }
-    for (const [root, ids] of byRoot) {
+      if (ctx.agents.get(agent.id) !== agent) continue
+      const membership = members.membershipFor(agent)
+      if (membership === undefined) continue
       try {
-        await subagents.drainChildren(root, ids)
+        subagents.interrupt(agent.id, { kind: 'ancestor', agent: membership.root })
       } catch (error: unknown) {
-        ctx.logger.warn(
-          `${LOG}: managed members of Session "%s" could not be drained: %s`, root.session.id, String(error),
-        )
+        ctx.logger.warn(`${LOG}: managed member "%s" could not be interrupted: %s`, agent.id, String(error))
       }
     }
   }
@@ -1117,8 +1119,8 @@ export function apply(ctx: Context, config: Config): void {
     // A member the runtime just claimed is known by its exact Team identity, so
     // the durable binding is written inside this awaited creation transaction.
     if (managedMembers.has(agent)) {
-      const membership = ctx.agentTeams.tryMembership(agent)
-      if (membership?.role === 'teammate') await members.bind(agent, { root: membership.root, name: membership.name })
+      const membership = members.membershipFor(agent) ?? membershipOf(ctx, agent)
+      if (membership !== undefined) await members.bind(agent, { root: membership.root, name: membership.name })
     }
   })
   ctx.on('agent/disposed', ({ agent }) => {

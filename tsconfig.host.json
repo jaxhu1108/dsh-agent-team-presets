@@ -22,6 +22,7 @@
     "src/delegation.ts",
     "src/member-identity.ts",
     "src/member-runtime.ts",
+    "src/team-runtime.ts",
     "src/member-store.ts",
     "src/presentation.ts",
     "src/tool-descriptions.ts",
@@ -68,9 +69,6 @@
     },
     {
       "path": "../../typert/protocol"
-    },
-    {
-      "path": "../agent-team"
     }
   ]
 }

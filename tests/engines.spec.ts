@@ -59,7 +59,8 @@ describe('declared host support', () => {
     // published package provides is how v0.2.0 shipped an install that failed:
     // npm resolved the impossible range upward to `0.2.2-alpha.2`, whose
     // `cordis ~4.0.6-alpha.1` then conflicted with the 0.2.1-rc.x line's 4.0.5.
-    expect(evaluatePluginCompatibility(fields, {}, '0.2.2-rc.1')).toBeUndefined()
+    expect(evaluatePluginCompatibility(fields, {}, '0.2.2-rc.3')).toBeUndefined()
+    expect(evaluatePluginCompatibility(fields, {}, '0.2.2-rc.1')).toBeDefined()
     expect(evaluatePluginCompatibility(fields, {}, '0.2.2-alpha.3')).toBeDefined()
     expect(evaluatePluginCompatibility(fields, {}, '0.2.1-rc.3')).toBeDefined()
     expect(evaluatePluginCompatibility(fields, {}, '0.2.0-rc.2')).toBeDefined()
@@ -68,7 +69,7 @@ describe('declared host support', () => {
   it('refuses what it was not verified on, instead of silently widening the claim', async () => {
     const fields = await manifest()
     const range = await declaredRange()
-    for (const runtime of ['0.1.9', '0.2.0-rc.1', '0.3.0', '1.0.0']) {
+    for (const runtime of ['0.1.9', '0.2.0-rc.1', '0.2.2-rc.1', '0.3.0', '1.0.0']) {
       expect(evaluatePluginCompatibility(fields, {}, runtime)?.requirements).toEqual({ 'engines.dsh': range })
     }
   })
@@ -98,7 +99,7 @@ describe('declared host support', () => {
     // 0.2.1-rc.x line too. The two checks must agree about the lowest usable
     // runtime — a peer range that no published version can satisfy is exactly
     // the defect v0.2.1 fixes.
-    expect(evaluatePluginCompatibility(peersOnly, {}, '0.2.2-rc.1')).toBeUndefined()
+    expect(evaluatePluginCompatibility(peersOnly, {}, '0.2.2-rc.3')).toBeUndefined()
     expect(evaluatePluginCompatibility(peersOnly, {}, '0.2.1-rc.3')).toBeDefined()
     expect(evaluatePluginCompatibility(peersOnly, {}, '0.2.0-rc.2')).toBeDefined()
     expect(evaluatePluginCompatibility(peersOnly, {}, '0.2.2')).toBeUndefined()
@@ -152,8 +153,8 @@ describe('the vendored rule agrees with the installed Host', () => {
     // on. The floor is 0.2.2-rc.1 because `dsh-tool-executor-native` does not
     // exist on npm before `0.2.2-alpha.2`, so no peer range can be satisfied on
     // the 0.2.1-rc.x line at all.
-    expect(evaluatePluginCompatibility(peersOnly, {}, '0.2.2-rc.1')).toBeUndefined()
-    expect(installedCompatibility(peersOnly, '0.2.2-rc.1')).toBeUndefined()
+    expect(evaluatePluginCompatibility(peersOnly, {}, '0.2.2-rc.3')).toBeUndefined()
+    expect(installedCompatibility(peersOnly, '0.2.2-rc.3')).toBeUndefined()
     // And they must agree that the superseded line is now OUT of range, rather
     // than one rule accepting what the other rejects.
     expect(evaluatePluginCompatibility(peersOnly, {}, '0.2.1-rc.3')).toBeDefined()

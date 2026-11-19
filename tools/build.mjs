@@ -12,7 +12,8 @@ const checkout = process.env.DSH_CHECKOUT
 if (!checkout || !existsSync(join(checkout, 'tsconfig.base.json'))) throw new Error('Set DSH_CHECKOUT to a dependency-installed compatible Harness checkout.')
 const harness = realpathSync(checkout)
 const require = createRequire(join(harness, 'package.json'))
-const scopedRequire = createRequire(join(harness, 'packages/experimental/agent-team-presets/package.json'))
+// This package manages its own React typings; the checkout only supplies Harness sources.
+const scopedRequire = createRequire(join(root, 'package.json'))
 const ts = require('typescript')
 const { build } = await import(pathToFileURL(require.resolve('tsdown')).href)
 const { transform } = require('lightningcss')
@@ -64,7 +65,9 @@ await withBuildWorkspace(stageRoot, async (stage) => {
   // Replace a mirrored plugin directory before emitting into it.
   rmSync(pkg, { recursive: true, force: true })
   mkdirSync(pkg, { recursive: true })
-  const generatedFiles = ['lib/typert.host.js', 'lib/typert.host.d.ts', 'lib/typert.remote-client.js', 'lib/typert.remote-client.d.ts']
+  // 0.2.2-rc.2 publishes the Remote declaration map beside the declaration and
+  // validates that every generated file is listed here.
+  const generatedFiles = ['lib/typert.host.js', 'lib/typert.host.d.ts', 'lib/typert.remote-client.js', 'lib/typert.remote-client.d.ts', 'lib/typert.remote-client.d.ts.map']
   cpSync(join(root, 'src'), join(pkg, 'src'), { recursive: true })
   mkdirSync(join(pkg, 'lib'), { recursive: true })
   // The Typert generator EMITS this face from the Host sources below; the file is
@@ -110,9 +113,35 @@ await withBuildWorkspace(stageRoot, async (stage) => {
   const base = ts.readConfigFile(join(harness, 'tsconfig.base.json'), ts.sys.readFile)
   if (base.error) throw new Error(ts.flattenDiagnosticMessageText(base.error.messageText, '\n'))
   const paths = Object.fromEntries(Object.entries(base.config.compilerOptions.paths).map(([key, values]) => [key, values.map(value => resolve(stage, value))]))
+  // A Host package's Remote face is a generated build output
+  // (`lib/typert.remote-client.d.ts`), so the checkout's own tsconfig maps only
+  // the package root. A Client source that must name the namespace it calls —
+  // `ctx.remote.settings`, `ctx.remote.session` — imports that subpath, and it
+  // only resolves once the package has been built. Mapping it here keeps a stock
+  // checkout buildable instead of asking every operator to edit theirs.
+  for (const [specifier, values] of Object.entries(base.config.compilerOptions.paths)) {
+    if (!specifier.startsWith('@deepseek-ai/') || specifier.includes('*')) continue
+    const source = resolve(stage, values[0])
+    const match = /^(.*?)\/src(?:\/|$)/.exec(source)
+    if (match === null) continue
+    const face = join(match[1], 'lib', 'typert.remote-client.d.ts')
+    const key = specifier + '/remote'
+    if (paths[key] !== undefined) continue
+    if (existsSync(face)) { paths[key] = [face]; continue }
+    // A source checkout carries no built Remote face. This package's own
+    // dependency install does, so the published declaration is used instead of
+    // requiring every operator to build the whole monorepo first.
+    const ownRequire = createRequire(join(root, 'package.json'))
+    try {
+      // `require.resolve` yields the runtime face; the declaration sits beside it.
+      const runtime = ownRequire.resolve(`${specifier}/remote`)
+      const declaration = runtime.replace(/\.js$/u, '.d.ts')
+      paths[key] = [existsSync(declaration) ? declaration : runtime]
+    } catch { /* face unavailable */ }
+  }
   const reactTypes = dirname(scopedRequire.resolve('@types/react/package.json'))
   Object.assign(paths, {
-    '@deepseek-ai/dsh-experimental-client-ui-agent-team/client': [join(stage, 'packages/experimental/client-ui-agent-team/src/client/index.ts')],
+    '@deepseek-ai/dsh-client-ui-agent-team/client': [join(stage, 'packages/client/ui-agent-team/src/client/index.ts')],
     'dsh-team-presets/remote': [join(pkg, 'lib/typert.remote-client.d.ts')],
     react: [join(reactTypes, 'index.d.ts')], 'react/*': [join(reactTypes, '*.d.ts')],
     zod: [join(zodDir, 'index.d.ts')],
@@ -129,7 +158,7 @@ await withBuildWorkspace(stageRoot, async (stage) => {
   const artifacts = new WorkspaceTypertGenerator(stage, { checkDiagnostics: false }).generate([manifest.name], ['host'])
   const host = artifacts.find(row => row.face === 'host' && row.package === manifest.name)
   if (!host?.remote || !/mode:\s*['"]stream['"]/.test(host.remote.js) || !/teamPresets\/catalog|['"]catalog['"]/.test(host.remote.js) || !/teamPresets\/execution|['"]execution['"]/.test(host.remote.js)) throw new Error(`Generator did not produce expected contracts: ${JSON.stringify(artifacts.map(row => ({ package: row.package, face: row.face, remote: row.remote?.js })))}`)
-  for (const [name, text] of [['typert.host.js', host.js], ['typert.host.d.ts', host.dts], ['typert.remote-client.js', host.remote.js], ['typert.remote-client.d.ts', host.remote.dts]]) writeFileSync(join(pkg, 'lib', name), text)
+  for (const [name, text] of [['typert.host.js', host.js], ['typert.host.d.ts', host.dts], ['typert.remote-client.js', host.remote.js], ['typert.remote-client.d.ts', host.remote.dts], ['typert.remote-client.d.ts.map', host.remote.dtsMap]]) writeFileSync(join(pkg, 'lib', name), text)
   for (const face of ['host', 'client']) {
     const parsed = ts.parseJsonConfigFileContent({ compilerOptions: options, files: faceFiles[face] }, ts.sys, pkg)
     const program = ts.createProgram(parsed.fileNames, parsed.options)

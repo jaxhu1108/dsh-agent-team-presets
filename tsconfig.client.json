@@ -13,7 +13,7 @@
       "path": "../../api/remotes/tsconfig.client.json"
     },
     {
-      "path": "../client-ui-agent-team/tsconfig.json"
+      "path": "../../client/ui-agent-team/tsconfig.json"
     },
     {
       "path": "../../client/locale/tsconfig.client.json"

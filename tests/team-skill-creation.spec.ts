@@ -16,6 +16,7 @@
  */
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { teamMembers } from '../src/team-runtime.ts'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -29,7 +30,7 @@ import { SessionId } from '@deepseek-ai/dsh-session'
 import * as JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
 import Subagents from '@deepseek-ai/dsh-subagent'
 import * as Spawn from '@deepseek-ai/dsh-subagent-spawn-in-process'
-import TeamService from '@deepseek-ai/dsh-experimental-agent-team'
+import TeamService from '@deepseek-ai/dsh-agent-team'
 import SkillRegistry from '@deepseek-ai/dsh-skill'
 import * as toolSkill from '@deepseek-ai/dsh-tool-skill'
 import { apply, inject } from '../src/index.ts'
@@ -219,7 +220,7 @@ async function bindAsset(root: string, definition_: TeamPreset = definition()): 
  * @returns the failed roster row, or undefined when none exists.
  */
 function refusedRow(ctx: Context, root: Agent, name: string): { status?: string; diagnostics?: readonly string[] } | undefined {
-  const rows = ctx.agentTeams.listMembers(root).filter(member => member.name === name)
+  const rows = teamMembers(ctx, root).filter(member => member.name === name)
   expect(rows.length).toBeLessThanOrEqual(1)
   if (rows.length === 0) return undefined
   const row = rows[0] as { status?: string; diagnostics?: readonly string[] }
@@ -240,7 +241,7 @@ describe('a member with an assigned Team Skill', () => {
     const h = await stack({ skillRoot, withSkillService: true })
     const spawn = await call(h.ctx, h.root, 'spawn_team_member', { member: 'reviewer', task: 'REVIEW_TASK' })
     expect(spawn.isError, resultText(spawn)).toBe(false)
-    const row = h.ctx.agentTeams.listMembers(h.root).find(member => member.name === 'reviewer')!
+    const row = teamMembers(h.ctx, h.root).find(member => member.name === 'reviewer')!
     await vi.waitFor(() => expect(memberRequests(h.member, row.id).length).toBeGreaterThan(0), { timeout: 5000 })
     const first = memberRequests(h.member, row.id)[0]!
     // R1: the custom allow-list omits `skill`, and the member must still see it.
@@ -265,7 +266,7 @@ describe('a member with an assigned Team Skill', () => {
     })
     const spawn = await call(h.ctx, h.root, 'spawn_team_member', { member: 'auditor', task: 'AUDIT_TASK' })
     expect(spawn.isError, resultText(spawn)).toBe(false)
-    const row = h.ctx.agentTeams.listMembers(h.root).find(member => member.name === 'auditor')!
+    const row = teamMembers(h.ctx, h.root).find(member => member.name === 'auditor')!
     await vi.waitFor(() => expect(memberRequests(h.member, row.id).length).toBeGreaterThan(0), { timeout: 5000 })
     // The assignment belongs to `reviewer`; `auditor` must not inherit it.
     expect(requestText(memberRequests(h.member, row.id)[0]!)).not.toContain('release-check')
@@ -445,7 +446,7 @@ describe('a member with an assigned Team Skill', () => {
     const h = await stack({ skillRoot, withSkillService: false })
     const spawn = await call(h.ctx, h.root, 'spawn_team_member', { member: 'reviewer', task: 'REVIEW_TASK' })
     expect(spawn.isError, resultText(spawn)).toBe(false)
-    const row = h.ctx.agentTeams.listMembers(h.root).find(member => member.name === 'reviewer')
+    const row = teamMembers(h.ctx, h.root).find(member => member.name === 'reviewer')
     expect(row).toBeDefined()
     await vi.waitFor(() => expect(memberRequests(h.member, row!.id).length).toBeGreaterThan(0), { timeout: 5000 })
   }, 30_000)

@@ -1,5 +1,6 @@
 /** Capability negative tests with real scoped filesystem tools and durable Team providers. */
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { teamMembers } from '../src/team-runtime.ts'
 import { Context } from '@deepseek-ai/cordis'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
 import type { Agent } from '@deepseek-ai/dsh-agent'
@@ -14,8 +15,8 @@ import * as JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-j
 import Subagents from '@deepseek-ai/dsh-subagent'
 import * as Spawn from '@deepseek-ai/dsh-subagent-spawn-in-process'
 import * as Fork from '@deepseek-ai/dsh-subagent-fork-in-process'
-import TeamService from '@deepseek-ai/dsh-experimental-agent-team'
-import * as TeamTools from '@deepseek-ai/dsh-experimental-tool-agent-team'
+import TeamService from '@deepseek-ai/dsh-agent-team'
+import * as TeamTools from '@deepseek-ai/dsh-tool-agent-team'
 import { mkdtemp, rm, realpath } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -99,12 +100,12 @@ describe('strict capability execution', () => {
     expect(ctx.tools.get('spawn_team_member', handle.agent)).toBeUndefined()
     const native = await call(ctx, handle.agent, 'spawn_teammate', { name: 'ordinary-member', description: 'ordinary native creation', prompt: 'done' })
     expect(native.isError, JSON.stringify(native.content)).toBe(false)
-    await vi.waitFor(() => expect(ctx.agentTeams.listMembers(handle.agent).filter(member => member.role === 'teammate').every(member => member.status === 'inactive')).toBe(true))
+    await vi.waitFor(() => expect(teamMembers(ctx, handle.agent).filter(member => member.role === 'teammate').every(member => member.status === 'inactive')).toBe(true))
     // Ask the real upstream member to exercise its native spawn tool. The
     // upstream Lead-only check, not this plugin, must own the rejection.
     // Splice after ordinary first prompts, so the next cold activation uses it.
     script.unshift(toolCallResponse('member-native-call', 'spawn_teammate', { name: 'nested', description: 'nested', prompt: 'done' }), textResponse('done'))
-    await ctx.agentTeams.sendMessage(handle.agent, { target: 'ordinary-member', content: [{ type: 'text', text: 'native behavior probe' }], signal: new AbortController().signal })
+    await ctx.subagents.sendMessage(handle.agent, teamMembers(ctx, handle.agent).find(member => member.name === 'ordinary-member')!.id, [{ type: 'text', text: 'native behavior probe' }], { signal: new AbortController().signal })
     await vi.waitFor(() => expect(childResults.some(result => result.callId === 'member-native-call')).toBe(true))
     expect(childResults.find(result => result.callId === 'member-native-call')?.text).toContain('Team Lead')
     expect(childResults.find(result => result.callId === 'member-native-call')?.text).not.toContain('preset-managed creation')
@@ -245,7 +246,7 @@ describe('real durable preset-managed creation', () => {
     expect(first.isError, JSON.stringify(first.content)).toBe(false)
     const second = await call(ctx, root.agent, 'spawn_team_member', { member: 'reviewer', task: 'review second', context: 'fork' })
     expect(second.isError, JSON.stringify(second.content)).toBe(false)
-    const rows = ctx.agentTeams.listMembers(root.agent).filter(row => row.role === 'teammate')
+    const rows = teamMembers(ctx, root.agent).filter(row => row.role === 'teammate')
     expect(rows.map(row => row.name)).toEqual(['reviewer', 'reviewer-2'])
     for (const row of rows) {
       // Continuation owner may have disposed an idle activation already. Verify
@@ -264,7 +265,7 @@ describe('real durable preset-managed creation', () => {
     await ctx.subagents.drainChildren(root.agent, [firstId])
     expect(ctx.agents.get(firstId)).toBeUndefined()
     const previousCreations = created.filter(agent => agent.id === firstId).length
-    await ctx.agentTeams.sendMessage(root.agent, { target: 'reviewer', content: [{ type: 'text', text: 'continue' }], signal: new AbortController().signal })
+    await ctx.subagents.sendMessage(root.agent, teamMembers(ctx, root.agent).find(member => member.name === 'reviewer')!.id, [{ type: 'text', text: 'continue' }], { signal: new AbortController().signal })
     await vi.waitFor(() => expect(created.filter(agent => agent.id === firstId).length).toBeGreaterThan(previousCreations), { timeout: 3000 })
     await vi.waitFor(() => expect(outcomes.filter(outcome => outcome.id === firstId && outcome.error).length).toBeGreaterThanOrEqual(2))
     expect(body).not.toHaveBeenCalled()

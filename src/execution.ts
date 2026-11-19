@@ -15,10 +15,15 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
-import type {} from '@deepseek-ai/dsh-experimental-agent-team'
+import type {} from '@deepseek-ai/dsh-agent-team'
+import type {} from '@deepseek-ai/dsh-session-projection'
 import type { Config } from './config.ts'
 import { definitionFingerprint, selectedTeam } from './presets.ts'
+import { teamMembers, executingMemberCount } from './team-runtime.ts'
 import type { TeamExecutionRow, TeamExecutionSnapshot } from './types.ts'
+
+/** Diagnostics prefix for execution-monitor failures. */
+const LOG = 'agent-team-presets'
 
 /**
  * Whether one Agent is a top-level Session agent this plugin composes.
@@ -32,18 +37,16 @@ export function isSessionRoot(agent: Agent): boolean {
 /**
  * Whether any teammate of one Session is still running or provisioning.
  *
- * A teammate whose child has not been created yet has no `agent/status` of its
- * own, so the roster — which folds the durable `team/member` events — is the
- * authority here rather than the Agent registry. The captain is not counted:
- * its own status is the other half of the same question.
- * @param ctx - host context carrying the Team service.
+ * The durable subagent catalog is the authority here rather than the Agent
+ * registry: a member that finished is still cold-resumable under its name, and
+ * a member whose creation is in flight has no Agent of its own yet. The
+ * captain is not counted: its own status is the other half of the same question.
+ * @param ctx - host context carrying the subagent tree and projections.
  * @param agent - the Session-root Agent to inspect.
  * @returns whether a teammate is still working on that Session's Team task.
  */
 export function teammatesBusy(ctx: Context, agent: Agent): boolean {
-  if (ctx.agentTeams.tryMembership(agent) === undefined) return false
-  return ctx.agentTeams.listMembers(agent).some(member => member.role === 'teammate'
-    && (member.status === 'running' || member.status === 'provisioning'))
+  return teamMembers(ctx, agent).some(member => member.status === 'running' || member.status === 'provisioning')
 }
 
 /**
@@ -250,13 +253,15 @@ export class TeamExecutionMonitor {
       if (selected !== undefined) referenced.add(selected.id)
       if (applied !== undefined) referenced.add(applied.teamId)
       if (referenced.size === 0) continue
-      // The roster is the only authority on a teammate with no live child, so a
-      // Session whose roster cannot be read is undecidable rather than idle.
-      const readable = this.ctx.agentTeams.tryMembership(agent) !== undefined
-      const members = readable
-        ? this.ctx.agentTeams.listMembers(agent).filter(member => member.role === 'teammate'
-          && (member.status === 'running' || member.status === 'provisioning')).length
-        : 0
+      // The durable catalog is the only authority on a teammate with no live
+      // child, so a Session whose tree cannot be read is undecidable rather
+      // than idle.
+      let readable = true
+      let members = 0
+      try { members = executingMemberCount(this.ctx, agent) } catch (error: unknown) {
+        readable = false
+        this.ctx.logger.warn(`${LOG}: member execution state could not be read: %s`, String(error))
+      }
       const busy = agent.status === 'running' || members > 0
       const pending = applied === undefined
         || selected === undefined

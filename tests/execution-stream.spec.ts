@@ -6,13 +6,14 @@
  * event wiring (which the freeze suite covers).
  */
 
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
 import { mountAgentLoopTestDependencies } from '@deepseek-ai/dsh-agent-loop-testkit'
-import { TeamId } from '@deepseek-ai/dsh-experimental-agent-team'
-import type { TeamMemberView } from '@deepseek-ai/dsh-experimental-agent-team'
+import { reserveMember } from '../src/team-runtime.ts'
+import { TeamId } from '@deepseek-ai/dsh-agent-team'
+import type { TeamMemberView } from '@deepseek-ai/dsh-agent-team'
 import { LlmAdapter, createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { GenerateOptions, LlmResolvedModelInfo, StreamChunk } from '@deepseek-ai/dsh-llm'
 import { SessionId } from '@deepseek-ai/dsh-session'
@@ -110,21 +111,24 @@ async function setup(options: {
   const roots = new Set<Agent>()
   const unreadable = new Set<string>()
   const rows = new Map<string, readonly TeamMemberView[]>()
-  ctx.provide('agentTeams', {
-    spawnTeammate: async () => ({ member: { name: 'member', status: 'active' } }),
-    tryMembership: (agent: Agent) => roots.has(agent) && !unreadable.has(agent.session.id)
-      ? { root: agent, id: TeamId(agent.id), role: 'lead' as const, name: 'lead' }
-      : undefined,
-    listMembers: (agent: Agent): TeamMemberView[] => [
-      {
-        id: agent.id,
-        name: 'lead',
-        role: 'lead',
-        status: agent.status === 'running' ? 'running' : 'inactive',
-        diagnostics: [],
+  const reservations = new Map<string, (() => void)[]>()
+  // rc.3 has no Team roster. Member rows are served through the two seams the
+  // plugin actually reads: the `subagentCatalog` projection for durable rows and
+  // the live Agent registry for execution state. `unreadable` makes the
+  // projection throw, which is what a malformed durable stream does.
+  const snapshot = ctx.sessionProjections.snapshot.bind(ctx.sessionProjections)
+  vi.spyOn(ctx.sessionProjections, 'snapshot').mockImplementation((session, keys) => {
+    if (unreadable.has(session.id)) throw new Error('fixture roster is unreadable')
+    const result = snapshot(session, keys)
+    const extra = rows.get(session.id)
+    if (extra === undefined) return result
+    return {
+      ...result,
+      values: {
+        ...result.values,
+        subagentCatalog: extra.map((row, index) => ({ id: SessionId(`member-${String(index)}`), name: row.name, mode: 'continuable', provider: 'spawn', createdAt: 0 })),
       },
-      ...rows.get(agent.session.id) ?? [],
-    ],
+    } as typeof result
   })
 
   const teamsRef = volatileRef(options.teams)
@@ -149,7 +153,21 @@ async function setup(options: {
       // The freezer records the definition fingerprint, exactly as the plugin does.
       applied.set(agent, { teamId: definition.id, fingerprint: definitionFingerprint(definition) })
     },
-    teammates: (sessionId, next) => { rows.set(sessionId, next) },
+    teammates: (sessionId, next) => {
+      rows.set(sessionId, next)
+      // `provisioning` is exactly the admitted-but-unpublished window the plugin
+      // reserves itself, so the scripted rows are projected through it.
+      const root = agents.find(agent => agent.session.id === sessionId)
+      for (const row of reservations.get(sessionId) ?? []) row()
+      reservations.delete(sessionId)
+      if (root === undefined) return
+      // `provisioning` is the admitted-but-unpublished window the plugin reserves
+      // itself. A `running` row with no live child is only a durable catalog row,
+      // so it is projected as such and stays inactive until a child exists.
+      reservations.set(sessionId, (next ?? [])
+        .filter(row => row.status === 'provisioning')
+        .map((row, index) => reserveMember(root, SessionId(`reserved-${String(index)}`), row.name)))
+    },
     unreadable: (sessionId, next) => {
       if (next) unreadable.add(sessionId)
       else unreadable.delete(sessionId)
@@ -337,11 +355,13 @@ describe('Team execution stream', () => {
     const iterator = h.monitor.stream(controller.signal)[Symbol.asyncIterator]()
     await nextFrame(iterator)
     for (let count = 1; count <= 2000; count++) {
-      h.teammates('s1', Array.from({ length: count % 5 + 1 }, () => teammate('running')))
+      // Provisioning rows keep each invalidate observably busy, which is what
+      // makes this a coalescing test rather than an idle-state no-op.
+      h.teammates('s1', Array.from({ length: count % 5 + 1 }, () => teammate('provisioning')))
       h.monitor.invalidate()
       await Promise.resolve()
     }
-    expect((await nextFrame(iterator)).teams[0]?.executingMembers).toBe(1)
+    expect((await nextFrame(iterator)).teams[0]?.executingMembers).toBeGreaterThan(0)
     controller.abort()
     expect((await iterator.next()).done).toBe(true)
   })

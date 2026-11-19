@@ -13,7 +13,7 @@
  */
 import type { Context } from '@deepseek-ai/cordis';
 import type { Agent } from '@deepseek-ai/dsh-agent';
-import type { SessionId } from '@deepseek-ai/dsh-session';
+import { SessionId } from '@deepseek-ai/dsh-session';
 import type { TeamPreset } from './types.ts';
 import type { MemberRuntime } from './member-runtime.ts';
 /** One applied Team preset, owned until the Session's Team changes. */

@@ -13,6 +13,7 @@
  */
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { teamMembers } from '../src/team-runtime.ts'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -27,7 +28,7 @@ import { SessionId } from '@deepseek-ai/dsh-session'
 import * as JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
 import Subagents from '@deepseek-ai/dsh-subagent'
 import * as Spawn from '@deepseek-ai/dsh-subagent-spawn-in-process'
-import TeamService from '@deepseek-ai/dsh-experimental-agent-team'
+import TeamService from '@deepseek-ai/dsh-agent-team'
 import { bindScopeParent, createScope } from '@deepseek-ai/dsh-scope'
 import { PtcRuntime } from '@deepseek-ai/dsh-ptc-runtime'
 import type { PtcRunRequest, PtcRunSpec, PtcRunResult } from '@deepseek-ai/dsh-ptc-runtime'
@@ -212,7 +213,11 @@ async function stack(root: string, options: {
 
 /** The leading teammate row of one Session's roster, when a member was created. */
 function memberRow(h: Awaited<ReturnType<typeof stack>>) {
-  return h.ctx.agentTeams.listMembers(h.root).find(row => row.role === 'teammate')
+  // rc.3 has no Team roster. These cases assert that the plugin's own member
+  // tracking sees the child, so they read the same seam the plugin reads —
+  // the `subagentCatalog` projection plus live children — instead of the
+  // retired `agentTeams.listMembers`.
+  return teamMembers(h.ctx, h.root)[0]
 }
 
 describe('durable member identity', () => {
@@ -259,11 +264,7 @@ describe('durable member identity', () => {
     // creation surfaces as a rejected delivery instead of a queued one. The
     // contract under test is unchanged: the child never runs and is never
     // published on either route.
-    await second.ctx.agentTeams.sendMessage(resumed, {
-      target: 'reviewer',
-      content: [{ type: 'text', text: 'SECOND' }],
-      signal: new AbortController().signal,
-    }).catch(() => undefined)
+    await second.ctx.subagents.sendMessage(resumed, SessionId('reserved-0'), [{ type: 'text', text: 'SECOND' }], { signal: new AbortController().signal }).catch(() => undefined)
     await settlePlugin()
     // No model request reached the member OR the Lead route for that child, and
     // the child was never published: the creation transaction was vetoed.
@@ -289,11 +290,7 @@ describe('durable member identity', () => {
       resumeSessionId: SessionId('lead'),
       agentOptions: { provider: 'mock', model: 'lead-model' },
     })).agent
-    await second.ctx.agentTeams.sendMessage(resumed, {
-      target: 'reviewer',
-      content: [{ type: 'text', text: 'SECOND' }],
-      signal: new AbortController().signal,
-    }).catch(() => undefined)
+    await second.ctx.subagents.sendMessage(resumed, SessionId('reserved-0'), [{ type: 'text', text: 'SECOND' }], { signal: new AbortController().signal }).catch(() => undefined)
     await settlePlugin()
     expect(second.member.requests.filter(request => request.sessionId === childId)).toHaveLength(0)
     expect(second.lead.requests.filter(request => request.sessionId === childId)).toHaveLength(0)
@@ -316,11 +313,7 @@ describe('durable member identity', () => {
       resumeSessionId: SessionId('lead'),
       agentOptions: { provider: 'mock', model: 'lead-model' },
     })).agent
-    await second.ctx.agentTeams.sendMessage(resumed, {
-      target: 'reviewer',
-      content: [{ type: 'text', text: 'SECOND' }],
-      signal: new AbortController().signal,
-    })
+    await second.ctx.subagents.sendMessage(resumed, SessionId('reserved-0'), [{ type: 'text', text: 'SECOND' }], { signal: new AbortController().signal })
     // The control for the veto cases: with the snapshot intact the member keeps
     // running on its OWN frozen route rather than the Lead's.
     await vi.waitFor(() => expect(second.member.requests.some(request => request.sessionId === childId)).toBe(true))
@@ -618,13 +611,15 @@ describe('ordered teardown', () => {
     expect(resultText(spawned), resultText(spawned)).not.toContain('Error')
     const row = memberRow(h)!
     await vi.waitFor(() => expect(h.ctx.agents.get(row.id)).toBeDefined())
+    // rc.3 drains a whole subtree: `drainDescendants(parents)` replaced the
+    // per-parent `drainChildren(parent, ids)`.
     const drained: string[][] = []
-    const realDrain = h.ctx.subagents.drainChildren.bind(h.ctx.subagents)
-    vi.spyOn(h.ctx.subagents, 'drainChildren').mockImplementation(async (parent, ids) => {
-      drained.push([...ids])
+    const realDrain = h.ctx.subagents.drainDescendants.bind(h.ctx.subagents)
+    vi.spyOn(h.ctx.subagents, 'drainDescendants').mockImplementation(async parents => {
+      drained.push(parents.map(parent => parent.id))
       // Let the held member finish so the official drain can reach quiescence.
       h.release()
-      await realDrain(parent, ids)
+      await realDrain(parents)
     })
     // Exactly what a plugin unload or HMR remount does: this activation is
     // released while the Host and its services stay alive.
@@ -639,10 +634,10 @@ describe('ordered teardown', () => {
     expect(resultText(spawned), resultText(spawned)).not.toContain('Error')
     const row = memberRow(h)!
     await vi.waitFor(() => expect(h.ctx.agents.get(row.id)).toBeDefined())
-    const realDrain = h.ctx.subagents.drainChildren.bind(h.ctx.subagents)
-    vi.spyOn(h.ctx.subagents, 'drainChildren').mockImplementation(async (parent, ids) => {
+    const realDrain = h.ctx.subagents.drainDescendants.bind(h.ctx.subagents)
+    vi.spyOn(h.ctx.subagents, 'drainDescendants').mockImplementation(async parents => {
       h.release()
-      await realDrain(parent, ids)
+      await realDrain(parents)
     })
     await h.fiber.dispose()
     // The ordered shutdown drained the member it installed through the official

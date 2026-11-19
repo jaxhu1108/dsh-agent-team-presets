@@ -27,6 +27,7 @@ import { routeRefusal } from './delegation.ts'
 import { editTeamPreset, promptTemplateFailure } from './preset-editor.ts'
 import type { TeamMemberEdit, TeamPresetEdit } from './preset-editor.ts'
 import { memberTargets, selectedTeam } from './presets.ts'
+import { executingMemberCount } from './team-runtime.ts'
 import { GET_TEAM_PRESET_DESCRIPTION, UPDATE_TEAM_PRESET_DESCRIPTION } from './tool-descriptions.ts'
 import type { TeamPreset } from './types.ts'
 
@@ -292,14 +293,10 @@ function executingMembers(
   appliedTeamId: (root: Agent) => string | undefined,
 ): number {
   let executing = 0
-  for (const root of ctx.agents.roots()) {
+  for (const root of ctx.agents.list().filter(agent => agent.session.header.origin !== 'subagent')) {
     const selected = selectedTeam(config.teams.get(), config.selections.get(), root.session.id)
     if (selected?.id !== teamId && appliedTeamId(root) !== teamId) continue
-    if (ctx.agentTeams.tryMembership(root) === undefined) continue
-    for (const member of ctx.agentTeams.listMembers(root)) {
-      if (member.role !== 'teammate') continue
-      if (member.status === 'running' || member.status === 'provisioning') executing += 1
-    }
+    executing += executingMemberCount(ctx, root)
   }
   return executing
 }

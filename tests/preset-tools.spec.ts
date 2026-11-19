@@ -16,7 +16,7 @@ import { registerPresetTools } from '../src/preset-tools.ts'
 import type { TeamPreset, TeamSelectionRecord } from '../src/types.ts'
 import { BUILTIN_TEAM_IDS } from '../src/builtin-teams.ts'
 import { MockAdapter, textResponse, toolCallResponse } from './fixtures/mock-adapter.ts'
-import { subagentServiceDouble } from './fixtures/plugin-harness.ts'
+import { mountSubagentDouble } from './fixtures/plugin-harness.ts'
 import { slot, team } from './fixtures/team-presets.ts'
 
 const NAMESPACE = 'agent-team-presets'
@@ -101,15 +101,9 @@ async function setup(options: {
   else if (options.noApprovalService !== true) ctx.provide('approval', { request: vi.fn(async () => options.approval ?? 'allowed-once') })
   // Mount on an idle baseline; busy-at-first-mount is intentionally quarantined
   // and is covered by application-freeze, not by these tool-handler cases.
+  // rc.3 has no Team roster: execution state is read from the subagent tree and
+  // its catalog projection, so member rows are projected onto those real seams.
   let members: { role: string; status: string }[] = []
-  ctx.provide('agentTeams', {
-    spawnTeammate: async () => ({ member: { name: 'member', status: 'active' } }),
-    tryMembership: () => ({ root: 'root', id: 's1', role: 'lead', name: 'lead' }),
-    listMembers: () => [
-      { id: 's1', name: 'lead', role: 'lead', status: 'inactive', diagnostics: [] },
-      ...members.map((member, index) => ({ id: `member-${String(index)}`, name: `member-${String(index)}`, diagnostics: [], ...member })),
-    ],
-  })
 
   if (options.sandboxMode !== undefined) {
     const mode = options.sandboxMode
@@ -152,7 +146,14 @@ async function setup(options: {
   // The plugin injects the subagent service, exactly as a deployment that
   // composes Teams provides it: without it the mount is parked and no preset
   // tool is ever registered.
-  ctx.provide('subagents', subagentServiceDouble())
+  mountSubagentDouble(ctx, {
+    members: () => members.map((member, index) => ({
+      id: `member-${String(index)}`,
+      name: `member-${String(index)}`,
+      role: member.role,
+      status: member.status,
+    })),
+  })
   await ctx.plugin(Object.assign((inner: Context) => { apply(inner, config) }, { inject }))
   members = [...options.members ?? []]
 

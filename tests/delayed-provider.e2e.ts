@@ -10,6 +10,7 @@
  */
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { teamMembers } from '../src/team-runtime.ts'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -23,7 +24,7 @@ import * as JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-j
 import Subagents from '@deepseek-ai/dsh-subagent'
 import * as Spawn from '@deepseek-ai/dsh-subagent-spawn-in-process'
 import * as Fork from '@deepseek-ai/dsh-subagent-fork-in-process'
-import TeamService from '@deepseek-ai/dsh-experimental-agent-team'
+import TeamService from '@deepseek-ai/dsh-agent-team'
 import { apply, inject } from '../src/index.ts'
 import { MEMBER_FORK_PROVIDER, MEMBER_FRESH_PROVIDER } from '../src/member-identity.ts'
 import { slot, team } from './fixtures/team-presets.ts'
@@ -132,7 +133,7 @@ async function delayedStack(root: string, configured: { fresh: string; fork: str
 
 /** The leading teammate row of one Session's roster, when a member was created. */
 function memberRow(ctx: Context, root: Agent) {
-  return ctx.agentTeams.listMembers(root).find(row => row.name === 'reviewer')
+  return teamMembers(ctx, root).find(row => row.name === 'reviewer')
 }
 
 describe('a provider that activates after this plugin', () => {
@@ -196,7 +197,7 @@ describe('a provider that activates after this plugin', () => {
     const forkedNow = await call(h.ctx, h.root, 'spawn_team_member', { member: 'reviewer', task: 'FORK', context: 'fork' })
     expect(resultText(forkedNow), resultText(forkedNow)).not.toContain('Error')
 
-    const rows = h.ctx.agentTeams.listMembers(h.root).filter(row => row.name !== 'lead' && row.role === 'teammate')
+    const rows = teamMembers(h.ctx, h.root).filter(row => row.name !== 'lead' && row.role === 'teammate')
     expect(rows.map(row => row.provider).sort()).toEqual([MEMBER_FORK_PROVIDER, MEMBER_FRESH_PROVIDER])
   }, 30000)
 

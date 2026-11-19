@@ -6,7 +6,7 @@
 
 中文 | [English](<README.en.md>)
 
-> **版本 v0.2.4** · 适配 DeepSeek Runtime `0.2.2-rc.1` 及以后的 0.2.x
+> **版本 v0.2.5** · 适配 DeepSeek Runtime `0.2.2-rc.3` 及以后的 0.2.x
 >
 > 这是一个 **DSH 插件**：给你的 DeepSeek Runtime 加一个可视化的「智能体团队预设」管理器。配好一套团队，从输入区一键选用，队长就能带着队员干活。
 >
@@ -48,7 +48,7 @@ DeepSeek Runtime 原生就有 Agent Teams（队长 + 队员 + 共享任务板 + 
 
 | 你的 DSH 版本 | 能否使用 |
 |---|---|
-| `>= 0.2.2-rc.1 < 0.3.0` | ✅ **支持**。`0.2.2-rc.1` 实测可用（模块加载、版本校验、依赖解析全部通过） |
+| `>= 0.2.2-rc.3 < 0.3.0` | ✅ **支持**。`0.2.2-rc.3` 实测可用（typecheck host/client 双 0、模块加载、依赖解析全部通过） |
 | `0.2.1-rc.x`（含 rc.2、rc.3） | ❌ **不支持**。见下方说明 |
 | `0.2.0-rc.2` 及更早 | ❌ **不支持**。插件管理器会直接拒绝安装/激活 |
 | `>= 0.3.0` | ❌ **未验证**，本版不声明支持 |
@@ -59,7 +59,9 @@ DeepSeek Runtime 原生就有 Agent Teams（队长 + 队员 + 共享任务板 + 
 dsh --version
 ```
 
-> **为什么下限是 `0.2.2-rc.1`？** 本版依赖 `@deepseek-ai/dsh-tool-executor-native`，而这个包在 npm 上**只从 `0.2.2-alpha.2` 才开始存在**。0.2.1-rc.x 时期它还不是独立包（native 执行器内建在 Runtime 里）。
+> **为什么下限是 `0.2.2-rc.3`？** rc.3 移除了独立 Team 花名册（`tryMembership`/`listMembers`/`spawnTeammate`），队员改为普通 continuable subagent；本版改用 `subagents.rootOf`/`namesOf`/`startActivation` 与 `subagentCatalog` 投影。旧版 `0.2.4` 及以前只适配 `0.2.2-rc.1`，**不要**装到 rc.3 上。
+
+> **为什么不能支持 `0.2.1-rc.x`？** 本版还依赖 `@deepseek-ai/dsh-tool-executor-native`，这个包在 npm 上**只从 `0.2.2-alpha.2` 才开始存在**；0.2.1-rc.x 时期 native 执行器还内建在 Runtime 里。两条限制叠加，下限落在 `0.2.2-rc.3`。
 >
 > v0.2.0 曾经错误地把 peer 范围写成 `>=0.2.1-rc.2`，指向一个不存在的版本；结果 npm 为了凑这个区间去拉 `0.2.2-alpha.2`，而它要求 `cordis ~4.0.6-alpha.1`，和 0.2.1-rc.x 的 `4.0.5` 冲突，导致安装直接失败。v0.2.1 修正了这一点。
 
@@ -75,10 +77,10 @@ dsh --version
 
 ### 版本号别搞混
 
-- **插件版本**：本版 `0.2.4`
-- **Runtime 版本**：例如 `0.2.2-rc.1`
+- **插件版本**：本版 `0.2.5`
+- **Runtime 版本**：例如 `0.2.2-rc.3`
 
-两条完全独立的版本线。插件 `0.2.4` 跑在 Runtime `0.2.2-rc.1` 上是**正常组合**，不是版本不匹配。
+两条完全独立的版本线。插件 `0.2.5` 跑在 Runtime `0.2.2-rc.3` 上是**正常组合**，不是版本不匹配。
 
 ---
 
@@ -93,7 +95,7 @@ dsh plugin --profile web add dsh-team-presets
 把 `web` 换成你实际的 profile 名。要固定本版：
 
 ```sh
-dsh plugin --profile web add dsh-team-presets@0.2.4
+dsh plugin --profile web add dsh-team-presets@0.2.5
 ```
 
 > **为什么推荐 npm**：只有从 registry 安装的插件才会被插件管理器**自动检测新版本**。管理器只放行 `kind === 'registry'` 的来源（见 `plugin-manager/src/index.ts` 的 `updateRefusal()`），`github:` 会被判定成 `kind: 'git'`，永远不会提示更新。想有更新提示，就用这条。
@@ -107,7 +109,7 @@ dsh plugin --profile web add github:jaxhu1108/dsh-agent-team-presets
 要固定某个发布 tag：
 
 ```sh
-dsh plugin --profile web add github:jaxhu1108/dsh-agent-team-presets#v0.2.4
+dsh plugin --profile web add github:jaxhu1108/dsh-agent-team-presets#v0.2.5
 ```
 
 > 这条路径**不会**收到更新提示，新版本要手动重装。适合想跟仓库最新提交、或 npm 不可达的场景。
@@ -131,7 +133,7 @@ dsh plugin --profile web add github:jaxhu1108/dsh-agent-team-presets#v0.2.4
 按插件管理器的提示重新加载（或重启 DSH），然后：
 
 1. 打开 **设置 → 智能体团队预设**
-2. 确认插件详情显示名称 `dsh-team-presets`、版本 `0.2.4`
+2. 确认插件详情显示名称 `dsh-team-presets`、版本 `0.2.5`
 3. 确认组件状态是「运行中」
 
 ### 注意事项
@@ -354,7 +356,7 @@ dsh plugin --profile web add github:jaxhu1108/dsh-agent-team-presets#v0.2.4
 
 | 现象 | 查什么 |
 |---|---|
-| 看不到设置页 / 插件 pending | profile 类型对不对、DSH 版本是否 ≥ `0.2.2-rc.1`、Agent Teams 有没有启用 |
+| 看不到设置页 / 插件 pending | profile 类型对不对、DSH 版本是否 ≥ `0.2.2-rc.3`、Agent Teams 有没有启用 |
 | `Configuration for "agent-team-presets" is overridden...` | profile patch、`$DSH_HOME/cordis.patch.yml`、`--patch` 里有重复手写条目，删掉重复项 |
 | 技能删除按钮置灰 | 技能受保护。看弹窗里的阻断列表，先去对应团队角色里取消分配 |
 | 技能分配报 `dependency-missing` | 技能声明的某个命令行程序在 `PATH` 上找不到 |
@@ -449,7 +451,7 @@ dsh plugin --profile web add github:jaxhu1108/dsh-agent-team-presets#v0.2.4
 
 ## 适配说明（给要改代码的人）
 
-本版针对 DSH `0.2.2-rc.1`（以及此前的 `0.2.1-rc.3`）做过一轮 API 迁移。**六个改动点全部记录在 [ADAPTATION.md](<ADAPTATION.md>)**，包含：
+本版针对 DSH `0.2.2-rc.3` 做过一轮 API 迁移（上一版 `0.2.4` 适配 `0.2.2-rc.1`）。**六个改动点全部记录在 [ADAPTATION.md](<ADAPTATION.md>)**，包含：
 
 - 新旧写法对照（`tools.execute` 批量调用、`presentAs` → `setExecutor`、`turnBoundary` 读取方式……）
 - 每条的症状——不改会报什么错

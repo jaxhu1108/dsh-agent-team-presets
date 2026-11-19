@@ -25,11 +25,11 @@ export declare function isSessionRoot(agent: Agent): boolean;
 /**
  * Whether any teammate of one Session is still running or provisioning.
  *
- * A teammate whose child has not been created yet has no `agent/status` of its
- * own, so the roster — which folds the durable `team/member` events — is the
- * authority here rather than the Agent registry. The captain is not counted:
- * its own status is the other half of the same question.
- * @param ctx - host context carrying the Team service.
+ * The durable subagent catalog is the authority here rather than the Agent
+ * registry: a member that finished is still cold-resumable under its name, and
+ * a member whose creation is in flight has no Agent of its own yet. The
+ * captain is not counted: its own status is the other half of the same question.
+ * @param ctx - host context carrying the subagent tree and projections.
  * @param agent - the Session-root Agent to inspect.
  * @returns whether a teammate is still working on that Session's Team task.
  */

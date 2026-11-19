@@ -63,8 +63,8 @@ import { assembleContextFor } from '@deepseek-ai/dsh-agent'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
 import { mountAgentLoopTestDependencies } from '@deepseek-ai/dsh-agent-loop-testkit'
-import { TeamId } from '@deepseek-ai/dsh-experimental-agent-team'
-import type { SpawnTeammateRequest, TeamMemberView } from '@deepseek-ai/dsh-experimental-agent-team'
+import { TeamId } from '@deepseek-ai/dsh-agent-team'
+import type { SpawnTeammateRequest, TeamMemberView } from '@deepseek-ai/dsh-agent-team'
 import { LlmAdapter, ToolCallId, createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { GenerateOptions, LlmResolvedModelInfo, StreamChunk } from '@deepseek-ai/dsh-llm'
 import { SessionId } from '@deepseek-ai/dsh-session'
@@ -74,6 +74,7 @@ import type { Config } from '../src/config.ts'
 import type { TeamPreset, TeamSelectionRecord } from '../src/types.ts'
 import { BUILTIN_TEAM_IDS } from '../src/builtin-teams.ts'
 import { CAPTAIN_RECOVERY_TOOLS } from '../src/tool-policy.ts'
+import { reserveMember } from '../src/team-runtime.ts'
 import { mountMemberStorage } from './fixtures/member-storage.ts'
 import type { MemberStorage } from './fixtures/member-storage.ts'
 import { settlePlugin, subagentServiceDouble } from './fixtures/plugin-harness.ts'
@@ -184,7 +185,7 @@ function teammate(status: TeamMemberView['status'], name = 'member-1'): TeamMemb
 }
 
 /** One `spawn_team_member` call the fake Team service recorded. */
-type SpawnCall = (caller: Agent, request: SpawnTeammateRequest) => Promise<{ member: { name: string; status: 'active' } }>
+type SpawnCall = (spec: Record<string, unknown>) => Promise<Record<string, unknown>>
 
 interface Harness {
   readonly ctx: Context
@@ -192,7 +193,7 @@ interface Harness {
   readonly adapter: GatedAdapter
   /** The durable member snapshot unit this Team's members are frozen into. */
   readonly storage: MemberStorage
-  readonly spawnTeammate: ReturnType<typeof vi.fn<SpawnCall>>
+  readonly startActivation: ReturnType<typeof vi.fn<SpawnCall>>
   /** Names of the exact-Agent spy tool bodies that actually ran. */
   readonly spyBodies: string[]
   /** Create one live Session-root Agent, with its exact-Agent spy tools. */
@@ -254,26 +255,15 @@ async function setup(options: {
   // exists, so a cold-start case can script a roster the mount already sees.
   const knownRoots = new Set<string>()
   const rows = new Map<string, readonly TeamMemberView[]>()
+  const reservations = new Map<string, (() => void)[]>()
+  const liveAgents: Agent[] = []
   const spyBodies: string[] = []
-  const spawnTeammate = vi.fn<SpawnCall>(async (_caller, request) => ({
-    member: { name: request.name, status: 'active' },
+  // rc.3 admits a member through `startActivation`; these cases assert that a
+  // quarantined Session never reaches creation, so the double only records it.
+  const startActivation = vi.fn<SpawnCall>(async (spec) => ({
+    childId: spec['childId'], name: spec['name'] ?? 'member',
+    result: Promise.resolve({ output: [] }), dispose: async () => {},
   }))
-  ctx.provide('agentTeams', {
-    spawnTeammate,
-    tryMembership: (agent: Agent) => roots.has(agent) || knownRoots.has(agent.session.id)
-      ? { root: agent, id: TeamId(agent.id), role: 'lead' as const, name: 'lead' }
-      : undefined,
-    listMembers: (agent: Agent): TeamMemberView[] => [
-      {
-        id: agent.id,
-        name: 'lead',
-        role: 'lead',
-        status: agent.status === 'running' ? 'running' : 'inactive',
-        diagnostics: [],
-      },
-      ...rows.get(agent.session.id) ?? [],
-    ],
-  })
 
   const storeRoot = await mkdtemp(join(tmpdir(), 'team-presets-regression-store-'))
   temporary.push(storeRoot)
@@ -286,7 +276,19 @@ async function setup(options: {
     describe: vi.fn(() => [{ ns: 'agent-team-presets', revision: 0 }]),
     update: vi.fn(async () => {}),
   })
-  ctx.provide('subagents', subagentServiceDouble())
+  // The double must answer rc.3 tree identity and record admission attempts, so
+  // a quarantined Session that never reaches creation can be asserted on.
+  ctx.provide('subagents', {
+    ...subagentServiceDouble(),
+    rootOf: (agent: Agent) => {
+      if (agent.session.header.origin === 'subagent') throw Object.assign(new Error('child is unpublished'), { code: 'UNAUTHORIZED' })
+      return agent
+    },
+    namesOf: () => ({ self: 'lead' }),
+    startActivation,
+    interrupt: () => {},
+    drainDescendants: async () => {},
+  })
 
   const config = {
     teams: teamsRef.ref,
@@ -304,7 +306,7 @@ async function setup(options: {
     config,
     adapter,
     storage,
-    spawnTeammate,
+    startActivation,
     spyBodies,
     create: async (id) => {
       knownRoots.add(id)
@@ -314,7 +316,15 @@ async function setup(options: {
       })
       roots.add(handle.agent)
       agents.push(handle.agent)
+      liveAgents.push(handle.agent)
       handles.set(handle.agent, handle)
+      // A row scripted before this Session existed only has a root now.
+      const early = rows.get(id)
+      if (early !== undefined) {
+        reservations.set(id, early
+          .filter(row => row.status !== 'inactive')
+          .map((row, index) => reserveMember(handle.agent, SessionId(`reserved-${String(index)}`), row.name)))
+      }
       // Exact-Agent spies: a name only this Agent can see proves the guard
       // decided the call, not that the deployment happened to lack the tool.
       for (const name of SPY_TOOLS) {
@@ -336,7 +346,16 @@ async function setup(options: {
       selectionsRef.set(next)
       ctx.emit('loader/volatile-update', [['selections']])
     },
-    teammates: (sessionId, next) => { rows.set(sessionId, next) },
+    teammates: (sessionId, next) => {
+      rows.set(sessionId, next)
+      const root = liveAgents.find(agent => agent.session.id === sessionId)
+      for (const release of reservations.get(sessionId) ?? []) release()
+      reservations.delete(sessionId)
+      if (root === undefined) return
+      reservations.set(sessionId, (next ?? [])
+        .filter(row => row.status !== 'inactive')
+        .map((row, index) => reserveMember(root, SessionId(`reserved-${String(index)}`), row.name)))
+    },
     rosterEvent: (agent) => {
       // Append the durable settlement the Agent Teams service writes, so the
       // freeze listener sees a committed event with a real sequence number.
@@ -673,7 +692,7 @@ describe('the PTC presentation fold', () => {
     expect(await wireTools(h.ctx, captain)).toEqual(before)
     expect((await applied(h.ctx, captain)).tools).not.toContain('spawn_team_member')
     expect(h.spyBodies).not.toContain('spawn_teammate')
-    expect(h.spawnTeammate).not.toHaveBeenCalled()
+    expect(h.startActivation).not.toHaveBeenCalled()
 
     await h.release()
   })
@@ -746,7 +765,7 @@ describe('fork and child lineage under a quarantined captain', () => {
       meta: { parentSession: captain.session.id, origin: 'subagent' },
       agentOptions: { provider: 'fixture', model: 'fixture' },
     })).rejects.toThrow(PARENT_FROZEN)
-    expect(h.spawnTeammate).not.toHaveBeenCalled()
+    expect(h.startActivation).not.toHaveBeenCalled()
     await h.release()
   })
 
@@ -959,7 +978,7 @@ describe('permission-state loss', () => {
       expect(result.text, name).toContain(UNRESTORABLE)
     }
     expect(h.spyBodies).not.toContain('spawn_teammate')
-    expect(h.spawnTeammate).not.toHaveBeenCalled()
+    expect(h.startActivation).not.toHaveBeenCalled()
     await h.release()
   })
 
@@ -1123,7 +1142,7 @@ describe('the recovery set stays a recovery set', () => {
     expect(h.config.teams.get()[0]?.captain.tools).not.toContain(DENIED_TOOL)
     // Nothing that creates an Agent or runs code runs its body.
     for (const name of ESCALATION_TOOLS) expect(h.spyBodies, name).not.toContain(name)
-    expect(h.spawnTeammate).not.toHaveBeenCalled()
+    expect(h.startActivation).not.toHaveBeenCalled()
     await h.release()
   })
 })
