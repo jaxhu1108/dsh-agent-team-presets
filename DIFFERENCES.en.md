@@ -80,7 +80,7 @@ Upstream's stylesheets mix twelve hard-coded radii (5–17px), bypassing the the
 
 Upstream's `src/builtin-skill.ts` (252 lines) registers a global runtime skill so a user hitting "the Team does not apply / members cannot be summoned / tools are refused / model routing looks wrong" can self-diagnose. It has twelve sections, an evidence-priority table, diagnostic commands, and a report template.
 
-**This branch now includes it** (from `v0.2.5`), with two adaptations:
+**This branch now includes it** (from `v0.2.6`), with two adaptations:
 
 - Package names and paths point at `dsh-team-presets`
 - Content calibrated against this branch's actual implementation
@@ -140,8 +140,8 @@ This branch is **independently maintained**. It does not promise to follow every
 
 | | Upstream | This branch |
 |---|---|---|
-| Latest | `v0.2.0` | `v0.2.5` |
-| `engines.dsh` | `>=0.2.2-rc.1 <0.3.0` | `>=0.2.2-rc.1 <0.3.0` |
+| Latest | `v0.2.0` | `v0.2.6` |
+| `engines.dsh` | `>=0.2.2-rc.3 <0.3.0` | `>=0.2.2-rc.3 <0.3.0` |
 | Install name | `dsh-agent-team-presets` | `dsh-team-presets` |
 | npm | none | [available](https://www.npmjs.com/package/dsh-team-presets) |
 | Tests | — | 772 (771 pass / 1 skipped) |
@@ -150,4 +150,4 @@ The version numbers are deliberately not aligned: two independent packages evolv
 
 ---
 
-*Last updated 2026-11-12 · corresponds to this branch's `v0.2.5`*
+*Last updated 2026-11-12 · corresponds to this branch's `v0.2.6`*

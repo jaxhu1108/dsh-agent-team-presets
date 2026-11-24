@@ -80,7 +80,7 @@ if (parsed.kind !== 'registry' || ...) return `${name} is not installed from a r
 
 上游 `src/builtin-skill.ts`（252 行）注册一个全局 runtime skill，用户遇到「团队不生效 / 成员召唤不了 / 工具被拒 / 模型路由不符」时能自助排查，含 12 个章节、证据优先级表、诊断命令和报告模板。
 
-**本分支已纳入**（`v0.2.5`），并做了两处适配：
+**本分支已纳入**（`v0.2.6`），并做了两处适配：
 
 - 包名与路径指向 `dsh-team-presets`
 - 内容按本分支的实际实现校准
@@ -140,14 +140,14 @@ agent.ctx.tools.setExecutor(new NativeToolExecutor(agent.ctx))
 
 | | 上游 | 本分支 |
 |---|---|---|
-| 最新版本 | `v0.2.0` | `v0.2.5` |
-| `engines.dsh` | `>=0.2.2-rc.1 <0.3.0` | `>=0.2.2-rc.1 <0.3.0` |
+| 最新版本 | `v0.3.2` | `v0.2.6` |
+| `engines.dsh` | `>=0.2.2-rc.3 <0.3.0` | `>=0.2.2-rc.3 <0.3.0` |
 | 安装包名 | `dsh-agent-team-presets` | `dsh-team-presets` |
 | npm | 无 | [有](https://www.npmjs.com/package/dsh-team-presets) |
-| 测试用例 | — | 772（771 通过 / 1 跳过） |
+| 测试用例 | — | 772（746 通过 / 25 失败 / 1 跳过，25 项需真实子会话，本检出缺 native addon） |
 
 版本号不对齐是**故意的**：两个独立包，各自演进，不需要用版本号暗示兼容关系。
 
 ---
 
-*最后更新：2026-11-12 · 对应本分支 `v0.2.5`*
+*最后更新：2026-11-12 · 对应本分支 `v0.2.6`*

@@ -15,7 +15,9 @@
  */
 
 /** The captain's preset-managed member creation tool. */
-export const SPAWN_TEAM_MEMBER_DESCRIPTION = "Create one teammate from the active Team preset, applying that member's own system prompt, model, reasoning effort, and tool scope."
+export const SPAWN_TEAM_MEMBER_DESCRIPTION = "Create one teammate from the active Team preset, applying that member's own system prompt, model, reasoning effort, and tool scope. "
+  + "This always creates a NEW member identity. When the new task continues work already done by an existing idle teammate of the same role — same files, same verified findings — send that teammate a message instead of summoning another. "
+  + "Create a new instance only for parallel work, when the existing member's context has gone stale or its conclusions were overturned, or when the role has no instance yet."
 
 /** The captain's read access to the Session's Team preset. */
 export const GET_TEAM_PRESET_DESCRIPTION = 'Read the Agent Team preset for this Session with the exact settings revision and every editable field. Call it before update_team_preset. When this Session selected no Team, the result says so and lists the configured Teams.'
