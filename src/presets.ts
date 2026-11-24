@@ -36,16 +36,36 @@ export function toolMode(agent: TeamSlotPreset): 'all' | 'custom' {
   return agent.toolMode ?? (agent.tools.length === 0 ? 'all' : 'custom')
 }
 
-/** The member name grammar the Agent Teams service accepts. */
-const MEMBER_TARGET = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u
+/** The member name grammar the Host subagent service accepts. */
+const MEMBER_TARGET = /^[a-z][a-z0-9-]{0,31}$/u
+
+/**
+ * Choose an unused instance name from a validated role target.
+ *
+ * Callers include existing instances and other role targets in `used`. Suffixes
+ * share the Host's 32-character limit with the base, so even a full-length role
+ * target can be instantiated repeatedly.
+ * @param base - a Host-valid role target returned by `memberTarget`.
+ * @param used - names the returned instance must avoid; this set is not changed.
+ * @returns the first available base or numbered name, at most 32 characters long.
+ */
+export function availableMemberTarget(base: string, used: ReadonlySet<string>): string {
+  let target = base
+  let suffix = 2
+  while (used.has(target)) {
+    const tail = `-${suffix}`
+    target = `${base.slice(0, 32 - tail.length).replace(/-+$/u, '')}${tail}`
+    suffix += 1
+  }
+  return target
+}
 
 /**
  * Derive a teammate target from one member's display name.
  *
- * Teammate names are permanent, lower-kebab-case, and never reused, so a
- * display name that already satisfies the grammar is kept and any other name
- * is transliterated to `member-<index>`. The display name still reaches the
- * captain through the roster.
+ * Teammate names are permanent and never reused, so a display name that satisfies
+ * the Host's grammar is kept and any other name falls back to `member-<index>`.
+ * The display name still reaches the captain through the roster.
  * @param member - the configured member.
  * @param index - zero-based position in the Team's member list.
  * @param used - targets already taken in this Team; the returned target is added.
@@ -53,15 +73,10 @@ const MEMBER_TARGET = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u
  */
 export function memberTarget(member: TeamAgentPreset, index: number, used: Set<string>): string {
   const candidate = member.name.trim().toLowerCase()
-  const base = MEMBER_TARGET.test(candidate) && candidate !== 'lead' && candidate.length <= 64
+  const base = MEMBER_TARGET.test(candidate) && candidate !== 'lead'
     ? candidate
     : `member-${index + 1}`
-  let target = base
-  let suffix = 2
-  while (used.has(target)) {
-    target = `${base}-${suffix}`
-    suffix += 1
-  }
+  const target = availableMemberTarget(base, used)
   used.add(target)
   return target
 }
@@ -227,7 +242,7 @@ export function captainBriefing(team: TeamPreset): string {
     ? `Team preset "${teamLabel(team)}" is active for this Session.`
     : `Team preset "${teamLabel(team)}" is active for this Session: ${description}`
   const roster = rows.length === 0 ? '' : `Summon a member with spawn_team_member(member, task). The targets below are fixed; use them verbatim.
-Prefer waking an idle teammate from the list above when the task continues its work; summon only when you need parallelism, fresh context, or a role that has no instance yet.
+Read list_team_members for existing instances, stable role identities and frozen-configuration differences. Continue related work with send_message to a compatible instance. When another instance is needed, give spawn_team_member a creation_reason describing parallel work, independent review, isolated context, stale conclusions, configuration changes or confirmed recovery failure.
 
 ${rows.join('\n')}`
   return [intro, identity, roster].filter(part => part !== '').join('\n\n')

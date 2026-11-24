@@ -112,7 +112,7 @@ describe('captain tool permissions', () => {
     ))
     Object.assign(agent, { ctx: scope.ctx })
     const app = applyTeamToAgent(ctx, agent, preset([]), { fresh: 'fresh', fork: 'fork' })
-    expect(ctx.tools.schemas(agent).map(tool => tool.name)).toEqual(['spawn_team_member'])
+    expect(ctx.tools.schemas(agent).map(tool => tool.name)).toEqual(['list_team_members', 'spawn_team_member'])
     expect((await execute(ctx, agent, 'global-allowed'))).toMatchObject({ isError: true })
     expect(allowed).not.toHaveBeenCalled()
     app.dispose()

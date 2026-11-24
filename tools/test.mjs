@@ -3,7 +3,8 @@
 import { createRequire } from 'node:module'
 import { resolve, dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import { existsSync } from 'node:fs'
+import { existsSync, mkdtempSync, rmSync, realpathSync, readFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const checkout = process.env.DSH_CHECKOUT
@@ -22,6 +23,15 @@ const aliases = Object.entries(config.config.compilerOptions.paths).map(([name, 
     ? { find: new RegExp(`^${name.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace('*', '(.*)')}$`), replacement: replacement.replace('*', '$1') }
     : { find: name, replacement }
 }).sort((a, b) => String(b.find).length - String(a.find).length)
+// An installed matching native package can supply prebuilt flock bindings when
+// the selected source checkout has not compiled its optional native binary.
+if (process.env.DSH_TEST_NATIVE_ROOT) {
+  const native = createRequire(join(resolve(process.env.DSH_TEST_NATIVE_ROOT), 'package.json'))
+  const selected = JSON.parse(readFileSync(join(harness, 'native/system/packages/entry/package.json'), 'utf8'))
+  const installed = native('@deepseek-ai/node-addon-system/package.json')
+  if (selected.version !== installed.version) throw new Error('Test native package version must match the checkout')
+  aliases.unshift({ find: '@deepseek-ai/node-addon-system/flock', replacement: native.resolve('@deepseek-ai/node-addon-system/flock') })
+}
 const decorators = {
   name: 'team-presets-standard-decorators', enforce: 'pre',
   transform(code, id) {
@@ -47,17 +57,25 @@ const dependencies = {
 // evidence, so the lane is explicit rather than absent.
 const e2e = process.argv.includes('--e2e') || process.env.DSH_TEST_E2E === '1'
 const filters = process.argv.slice(2).filter(arg => !arg.startsWith('--'))
-const vitest = await startVitest('test', filters, {
-  root, config: false, watch: false,
-  include: e2e ? ['tests/**/*.spec.{ts,tsx}', 'tests/**/*.e2e.ts'] : ['tests/**/*.spec.{ts,tsx}'],
-  // Vitest's own default excludes stay in force outside the e2e lane.
-  ...e2e ? { exclude: ['**/node_modules/**'] } : {},
-  pool: 'forks', maxWorkers: 4,
-  execArgv: process.allowedNodeEnvironmentFlags.has('--webstorage') ? ['--no-webstorage'] : [],
-}, {
-  oxc: { tsconfig: false },
-  resolve: { alias: aliases },
-  plugins: [decorators, dependencies],
-})
-if (!vitest) process.exitCode = 1
-else await vitest.close()
+const temporaryParent = realpathSync(tmpdir())
+const testStorage = mkdtempSync(join(temporaryParent, 'team-presets-tests-'))
+try {
+  const vitest = await startVitest('test', filters, {
+    root, config: false, watch: false,
+    env: { DSH_HOME: testStorage, npm_config_cache: join(testStorage, 'npm-cache') },
+    include: e2e ? ['tests/**/*.spec.{ts,tsx}', 'tests/**/*.e2e.ts'] : ['tests/**/*.spec.{ts,tsx}'],
+    // Vitest's own default excludes stay in force outside the e2e lane.
+    ...e2e ? { exclude: ['**/node_modules/**'] } : {},
+    pool: 'forks', maxWorkers: 4,
+    execArgv: process.allowedNodeEnvironmentFlags.has('--webstorage') ? ['--no-webstorage'] : [],
+  }, {
+    oxc: { tsconfig: false },
+    resolve: { alias: aliases },
+    plugins: [decorators, dependencies],
+  })
+  if (!vitest) process.exitCode = 1
+  else await vitest.close()
+} finally {
+  if (dirname(realpathSync(testStorage)) !== temporaryParent) throw new Error('Refused unsafe test storage cleanup')
+  rmSync(testStorage, { recursive: true, force: true })
+}

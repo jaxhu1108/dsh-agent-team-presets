@@ -24,7 +24,7 @@ import type { TeamSlotPreset } from './types.ts'
  */
 export { SKILL_TOOL_NAME }
 
-export const PRESET_TOOLS = ['spawn_team_member', 'get_team_preset', 'update_team_preset'] as const
+export const PRESET_TOOLS = ['spawn_team_member', 'list_team_members', 'get_team_preset', 'update_team_preset'] as const
 export const TEAM_TOOLS = ['spawn_teammate', 'send_message', 'list_agents', 'wait_agent', 'interrupt_agent',
   'team_task_create', 'team_task_get', 'team_task_list', 'team_task_update'] as const
 const OWN_TOOLS: ReadonlySet<string> = new Set([...PRESET_TOOLS, ...TEAM_TOOLS])

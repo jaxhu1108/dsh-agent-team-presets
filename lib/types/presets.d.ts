@@ -30,12 +30,22 @@ export declare const IMPLICIT_TOOLS: readonly string[];
  */
 export declare function toolMode(agent: TeamSlotPreset): 'all' | 'custom';
 /**
+ * Choose an unused instance name from a validated role target.
+ *
+ * Callers include existing instances and other role targets in `used`. Suffixes
+ * share the Host's 32-character limit with the base, so even a full-length role
+ * target can be instantiated repeatedly.
+ * @param base - a Host-valid role target returned by `memberTarget`.
+ * @param used - names the returned instance must avoid; this set is not changed.
+ * @returns the first available base or numbered name, at most 32 characters long.
+ */
+export declare function availableMemberTarget(base: string, used: ReadonlySet<string>): string;
+/**
  * Derive a teammate target from one member's display name.
  *
- * Teammate names are permanent, lower-kebab-case, and never reused, so a
- * display name that already satisfies the grammar is kept and any other name
- * is transliterated to `member-<index>`. The display name still reaches the
- * captain through the roster.
+ * Teammate names are permanent and never reused, so a display name that satisfies
+ * the Host's grammar is kept and any other name falls back to `member-<index>`.
+ * The display name still reaches the captain through the roster.
  * @param member - the configured member.
  * @param index - zero-based position in the Team's member list.
  * @param used - targets already taken in this Team; the returned target is added.

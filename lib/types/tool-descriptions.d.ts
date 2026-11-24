@@ -15,6 +15,8 @@
  */
 /** The captain's preset-managed member creation tool. */
 export declare const SPAWN_TEAM_MEMBER_DESCRIPTION: string;
+/** Read-only discovery of the instances this plugin manages. */
+export declare const LIST_TEAM_MEMBERS_DESCRIPTION: string;
 /** The captain's read access to the Session's Team preset. */
 export declare const GET_TEAM_PRESET_DESCRIPTION = "Read the Agent Team preset for this Session with the exact settings revision and every editable field. Call it before update_team_preset. When this Session selected no Team, the result says so and lists the configured Teams.";
 /** The captain's revision-fenced write to the shared Team preset. */

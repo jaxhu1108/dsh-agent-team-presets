@@ -6,7 +6,7 @@
 
 English | [中文](<README.md>)
 
-> **Version v0.2.6** · For DeepSeek Runtime `0.2.2-rc.3` and later 0.2.x
+> **Version v0.2.7** · For DeepSeek Runtime `0.2.2-rc.3` and later 0.2.x
 >
 > Requires a compatible DeepSeek Harness deployment with Agent Teams enabled. This version targets the DSH `0.2.2-rc.3` API; see [Requirements](#requirements). Prebuilt artifacts are included, so installation does not require a source build.
 >
@@ -163,7 +163,7 @@ The screenshots illustrate the v0.2.x settings interface, Team Skill management,
 - **A Web or Desktop profile with Settings and the required client services.** Install into the profile you actually use, typically `web` for the Web GUI or `desktop` for Desktop.
 - **Durable storage and a continuable subagent backend for member execution.** Member creation is refused if the storage domain or selected execution backend is unavailable. The default backend names are `spawn` and `fork`.
 
-The plugin version (`0.2.6`) and the Harness version (`0.2.2-rc.3`, for example) are separate version lines.
+The plugin version (`0.2.7`) and the Harness version (`0.2.2-rc.3`, for example) are separate version lines.
 
 <a id="use-this-package"></a>
 ## Install and upgrade
@@ -173,13 +173,13 @@ The plugin version (`0.2.6`) and the Harness version (`0.2.2-rc.3`, for example)
 Open **Global panels → Plugins → Add plugin**, paste the line below into **Package name or address**, and click **Install**:
 
 ```text
-dsh-team-presets@0.2.6
+dsh-team-presets@0.2.7
 ```
 
 <!-- release-version: keep in sync with package.json version -->
 
 - **Registry** selects which npm source the download comes from. **Default registry** uses pnpm's own configuration. Pick **Official npm registry** to bypass a mirror, or **Custom address** for an internal or cloud mirror.
-- `@0.2.6` pins the version; omit it to install the latest published package.
+- `@0.2.7` pins the version; omit it to install the latest published package.
 - The field accepts package names, `name@version`, `github:owner/repo`, tarball URLs, or absolute filesystem paths.
 - This package declares `dsh.bundle`, so the plugin manager automatically registers it as a profile bundle layer; do not add a loader entry by hand.
 - Once installed, reinstalling the same package identity is blocked. To switch sources (e.g. from GitHub to npm), uninstall first, then install the new spec.
@@ -194,7 +194,7 @@ dsh plugin --profile <profile> add dsh-team-presets
 Replace `<profile>` with your active profile (e.g. `web` or `desktop`). To pin this release:
 
 ```sh
-dsh plugin --profile <profile> add dsh-team-presets@0.2.6
+dsh plugin --profile <profile> add dsh-team-presets@0.2.7
 ```
 
 > **Why npm is recommended**: only registry installs are checked for newer versions. The plugin manager admits update candidates solely when the saved source parses as a registry spec (`updateRefusal()` in `plugin-manager/src/index.ts`); a `github:` spec parses as `kind: 'git'` and is refused before any version lookup. Install from GitHub and you will never be offered an update.
@@ -205,17 +205,17 @@ dsh plugin --profile <profile> add dsh-team-presets@0.2.6
 dsh plugin --profile <profile> add github:jaxhu1108/dsh-agent-team-presets
 ```
 
-To pin the v0.2.6 release tag:
+To pin the v0.2.7 release tag:
 
 ```sh
-dsh plugin --profile <profile> add github:jaxhu1108/dsh-agent-team-presets#v0.2.6
+dsh plugin --profile <profile> add github:jaxhu1108/dsh-agent-team-presets#v0.2.7
 ```
 
 > This channel never offers updates; reinstalling by hand is the only way to move to a newer release. Use it when you want to track repository commits, or when the npm registry is unreachable from your network.
 
 ### Verify and upgrade safely
 
-After installation, follow the plugin manager's reload/restart prompts and navigate to **Settings → Agent team presets**. Verify that details display `dsh-team-presets`, version `0.2.6`, and a running component.
+After installation, follow the plugin manager's reload/restart prompts and navigate to **Settings → Agent team presets**. Verify that details display `dsh-team-presets`, version `0.2.7`, and a running component.
 
 - Back up profile settings, Team definitions, and Session selections before upgrading.
 - When migrating from a development link, remove `@deepseek-ai/dsh-experimental-agent-team-presets` first before enabling the community package.
@@ -237,7 +237,7 @@ Example prompt for a Team with execution and review roles:
 
 > Use the selected Team. Have the executor implement the agreed changes and regression tests, then ask the reviewer to inspect them independently. Summarize changes, test results, and remaining risks.
 
-A preset role is a template. Summoning creates an instance with a unique target such as `executor` or `executor-2`. Use `send_message` with the returned target to continue working with an existing instance rather than spawning a new one.
+Read `list_team_members` before delegating to inspect stable team/role identities, frozen-configuration differences and continuation status. Continue related work with `send_message` to the existing target. Supply `creation_reason` to `spawn_team_member` for parallel work, independent review, isolated context, changed configuration or replacement after confirmed recovery failure. With an existing instance of that role and no reason, the tool returns `reuse-required` with candidates. Each successful creation returns a unique target such as `executor` or `executor-2`.
 
 Selecting **No team** disarms the Team application once the captain and teammates become idle, restoring standard session contributions without changing the active model.
 
@@ -250,7 +250,7 @@ Selecting **No team** disarms the Team application once the captain and teammate
 | Display metadata | Summary, tags, use cases, quick prompts, and notes. Purely presentation-only; never injected into LLM context tokens. |
 | Captain | The lead agent. A nonempty captain prompt replaces its persona prefix; the captain keeps the conversation's model. |
 | Members | Reusable role templates the captain can summon. When the Team's **personnel control** switch is on, the captain can also add, edit, and remove them. |
-| Name | Role display name and target base. ASCII letters/digits and hyphens (max 64 chars, not `lead`). |
+| Name | Display name used to derive a target. Lowercase ASCII letters/digits and hyphens with a leading letter and total length up to 32 are accepted directly. Other names receive `member-N`. `lead` is reserved. Instance suffixes count toward the limit. |
 | Description | Role responsibilities for the captain to select appropriate members (max 200 chars). |
 | Color | Accent color distinguishing the role in settings and the roster. |
 | Provider / Model | Members only. Route from the deployment's model catalog. Empty inherits the captain's route, so a Team keeps one model unless a role overrides it. |
@@ -350,6 +350,11 @@ Root sessions register tools allowing agents to inspect and update presets and s
 
 ### Team preset tools
 
+- **`list_team_members`** inspects stable team and role identities, activity, frozen-configuration differences and continuation status.
+- **`spawn_team_member`** creates an instance. If the role already has an instance and `creation_reason` is absent, it returns `reuse-required` with candidates.
+
+Snapshot and compatibility fields describe stored records. Assess recovery through `continuation` and an actual message resume. `unchecked` identifies unverified recovery. `inactive` describes current turn activity.
+
 - **`get_team_preset`**: Reads the active or specified Team preset, returning its purpose, role descriptions, prompts, roster, and settings revision.
 - **`update_team_preset`**: Updates team/captain descriptions and member prompts/descriptions using compare-and-set revision checks. Requires direct human turn and Host approval. Returns `team-busy` if affected members are currently active.
 
@@ -446,6 +451,15 @@ npm test
 npm run typecheck
 npm run bundle
 ```
+
+### Release verification
+
+| Check | Result |
+|---|---|
+| Host and client types | 0 local diagnostics, with checkout dependency diagnostics excluded |
+| Build | Passed with prebuilt Host and Client artifacts |
+| Targeted checks | 213 passed, including real persistence and repeated cold restoration |
+| Full suite | 825 cases with 807 passed, 17 failed and 1 skipped in the release workspace. All 17 failures also occurred in the original baseline |
 
 Bug reports and pull requests are welcome at [GitHub Issues](https://github.com/jaxhu1108/dsh-agent-team-presets/issues) and [Pull requests](https://github.com/jaxhu1108/dsh-agent-team-presets/pulls).
 

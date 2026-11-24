@@ -11,7 +11,7 @@ import { Context } from '@deepseek-ai/cordis'
 import { RUN_CODE_NAME } from '@deepseek-ai/dsh-tools'
 import type {} from '@deepseek-ai/dsh-tools'
 import type {} from '@deepseek-ai/dsh-agent-preset-registry'
-import { GET_TEAM_PRESET_DESCRIPTION, SPAWN_TEAM_MEMBER_DESCRIPTION, UPDATE_TEAM_PRESET_DESCRIPTION } from './tool-descriptions.ts'
+import { GET_TEAM_PRESET_DESCRIPTION, LIST_TEAM_MEMBERS_DESCRIPTION, SPAWN_TEAM_MEMBER_DESCRIPTION, UPDATE_TEAM_PRESET_DESCRIPTION } from './tool-descriptions.ts'
 import { IMPLICIT_TOOLS } from './presets.ts'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import type { TeamExecutionMonitor } from './execution.ts'
@@ -70,6 +70,7 @@ function emptyExecution(): AsyncIterable<TeamExecutionSnapshot> {
  */
 const OWN_TOOL_DESCRIPTIONS: Readonly<Record<string, string>> = {
   spawn_team_member: SPAWN_TEAM_MEMBER_DESCRIPTION,
+  list_team_members: LIST_TEAM_MEMBERS_DESCRIPTION,
   get_team_preset: GET_TEAM_PRESET_DESCRIPTION,
   update_team_preset: UPDATE_TEAM_PRESET_DESCRIPTION,
 }
@@ -82,7 +83,7 @@ const OWN_TOOL_DESCRIPTIONS: Readonly<Record<string, string>> = {
  * make them usable. The page marks them instead of implying they are grantable.
  */
 const CAPTAIN_ONLY: ReadonlySet<string> = new Set([
-  'spawn_team_member', 'get_team_preset', 'update_team_preset', 'interrupt_agent',
+  'spawn_team_member', 'list_team_members', 'get_team_preset', 'update_team_preset', 'interrupt_agent',
 ])
 
 /**

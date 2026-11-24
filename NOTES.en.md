@@ -88,10 +88,10 @@ That is how this chain stays traceable back to where it actually started.
 
 | Item | Value |
 |---|---|
-| Plugin version | `0.2.1` |
-| Runtime support | `>= 0.2.2-rc.1 < 0.3.0` |
-| Tests | 762 cases / 761 passed / 1 skipped / 0 failed across 51 files |
-| Typecheck | host 0 local diagnostics / client 0 local diagnostics |
+| Plugin version | `0.2.7` |
+| Runtime support | `>= 0.2.2-rc.3 < 0.3.0` |
+| Tests | In the release workspace, 825 cases yielded 807 passed, 17 failed and 1 skipped. All 17 failures also occurred in the original baseline. The 213 targeted checks for these changes passed |
+| Typecheck | The release build produced 0 local diagnostics for both host and client, with checkout dependency diagnostics excluded |
 | Distribution | GitHub Releases + npm (package name `dsh-team-presets`, distinct from the upstream `dsh-agent-team-presets`) |
 
 ---

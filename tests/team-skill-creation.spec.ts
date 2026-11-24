@@ -319,7 +319,10 @@ describe('a member with an assigned Team Skill', () => {
     const h = await stack({ skillRoot, withSkillService: false })
     const first = await call(h.ctx, h.root, 'spawn_team_member', { member: 'reviewer', task: 'FIRST' })
     expect(first.isError).toBe(true)
-    const second = await call(h.ctx, h.root, 'spawn_team_member', { member: 'reviewer', task: 'SECOND' })
+    const second = await call(h.ctx, h.root, 'spawn_team_member', {
+      member: 'reviewer', task: 'SECOND',
+      creation_reason: 'Replace the failed provisioning attempt to verify the same skill refusal.',
+    })
     // A second attempt reports the same reason instead of succeeding on leaked
     // state or hanging on a promise the first attempt left unresolved.
     expect(second.isError).toBe(true)

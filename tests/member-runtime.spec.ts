@@ -169,6 +169,33 @@ function intent(lead: Agent, overrides: Partial<MemberIntent> = {}): MemberInten
   }
 }
 
+describe('activation receipt lifetime', () => {
+  it.each(['resolve', 'reject'] as const)('releases the receipt when its result %ss', async settlement => {
+    const h = await harness()
+    const completion = Promise.withResolvers<never>()
+    let disposed = false
+    const dispose = async () => { disposed = true }
+    h.members.track({ childId: SessionId('finished'), name: 'finished', result: completion.promise, dispose })
+    if (settlement === 'resolve') completion.resolve(undefined as never)
+    else completion.reject(new Error('capture failed'))
+    await completion.promise.catch(() => {})
+    await h.members.disposeActivations()
+    expect(disposed).toBe(false)
+    await h.members.close()
+  })
+
+  it('continues to dispose an activation whose result is still pending', async () => {
+    const h = await harness()
+    const completion = Promise.withResolvers<never>()
+    let disposed = false
+    h.members.track({ childId: SessionId('running'), name: 'running', result: completion.promise,
+      dispose: async () => { disposed = true; completion.resolve(undefined as never) } })
+    await h.members.disposeActivations()
+    expect(disposed).toBe(true)
+    await h.members.close()
+  })
+})
+
 describe('claiming one child', () => {
   it('leaves a native Agent with no snapshot and no member marker entirely alone', async () => {
     const h = await harness()

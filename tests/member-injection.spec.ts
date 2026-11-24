@@ -1,5 +1,5 @@
 /**
- * Official rc.2 member injection through the PRODUCTION plugin composition.
+ * Official rc.3 member injection through the PRODUCTION plugin composition.
  *
  * Every case mounts the real Team service, the real continuation manager, real
  * JSONL session persistence, and the real storage stack the `dsh-base` bundle
@@ -19,8 +19,8 @@ import { assembleContextFor } from '@deepseek-ai/dsh-agent'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { mountAgentLoopTestDependencies } from '@deepseek-ai/dsh-agent-loop-testkit'
-import { settlePlugin, waitForTeamApplication } from './fixtures/plugin-harness.ts'
-import { membershipOf, teamMembers } from '../src/team-runtime.ts'
+import { disposeRealTeamContext, settlePlugin, waitForTeamApplication } from './fixtures/plugin-harness.ts'
+import { teamMembers } from '../src/team-runtime.ts'
 import { ReasoningEffortId, ToolCallId } from '@deepseek-ai/dsh-llm'
 import type { GenerateOptions } from '@deepseek-ai/dsh-llm'
 import { SessionId } from '@deepseek-ai/dsh-session'
@@ -45,7 +45,7 @@ const contexts: Context[] = []
 const temporary: string[] = []
 
 afterEach(async () => {
-  for (const ctx of contexts.splice(0).reverse()) await ctx.fiber.dispose()
+  for (const ctx of contexts.splice(0).reverse()) await disposeRealTeamContext(ctx)
   for (const path of temporary.splice(0)) {
     const absolute = await realpath(path)
     if (!absolute.startsWith(join(tmpdir(), 'team-presets-injection-'))) throw new Error('Unexpected fixture root')
@@ -227,7 +227,7 @@ describe('a preset-managed member receives its frozen configuration before its f
     // Registered after the plugin, so the plugin's own listener has already
     // installed the guard when this observes the live child.
     h.ctx.on('agent/created', async ({ agent }) => {
-      if (membershipOf(h.ctx, agent)?.role !== 'teammate') return
+      if (agent.session.header.origin !== 'subagent') return
       const write = await call(h.ctx, agent, 'write', { file_path: '/never-touched', content: 'x' })
       denied.push(write.isError === true)
     })
@@ -385,25 +385,44 @@ describe('durable snapshots and recovery', () => {
 
   it('re-installs the frozen snapshot on every residency after a cold resume', async () => {
     const h = await stack({ members: [routedMember('member-route', 'member-model')] })
+    const residencies: Agent[] = []
+    h.ctx.on('agent/created', ({ agent }) => { residencies.push(agent) })
     const spawn = await call(h.ctx, h.root, 'spawn_team_member', { member: 'reviewer', task: 'FIRST_TASK' })
     expect(spawn.isError, resultText(spawn)).toBe(false)
     const row = teamMembers(h.ctx, h.root).find(member => member.name === 'reviewer')!
     await vi.waitFor(() => expect(memberRequests(h.member, row.id).length).toBeGreaterThan(0), { timeout: 5000 })
 
-    await vi.waitFor(() => expect(h.ctx.agents.get(row.id)).toBeUndefined(), { timeout: 5000 })
-    const before = h.member.requests.length
-    await h.ctx.subagents.sendMessage(h.root, teamMembers(h.ctx, h.root).find(member => member.name === 'reviewer')!.id,
-      [{ type: 'text', text: 'RESUME_TASK' }], { signal: new AbortController().signal })
-    await vi.waitFor(() => {
-      expect(h.member.requests.slice(before).some(request => requestText(request).includes('RESUME_TASK'))).toBe(true)
-    }, { timeout: 5000 })
-    const resumed = h.member.requests.slice(before).find(request => requestText(request).includes('RESUME_TASK'))!
-    // A finished member is resumed from its durable descriptor; the plugin's
-    // scoped registrations must be installed again for the new residency.
-    expect(resumed.provider).toBe('member-route')
-    expect(resumed.model).toBe('member-model')
-    expect(requestText(resumed)).toContain('UNIQUE_MEMBER_RULES')
-    expect(resumed.tools?.map(tool => tool.name)).toEqual(['read'])
+    for (const task of ['RESUME_TASK', 'RESUME_AGAIN']) {
+      await vi.waitFor(() => expect(h.ctx.agents.get(row.id)).toBeUndefined(), { timeout: 5000 })
+      expect(h.ctx.sessions.get(row.id)).toBeUndefined()
+      expect(await h.ctx.sessionPersistence.stat(row.id)).toBeDefined()
+      const frozen = await h.ctx.sessionQuery.observeSession(row.id)
+      try {
+        expect(frozen.source).toBe('prepared')
+        expect(frozen.projections?.values.subagent).toBeDefined()
+      } finally { frozen[Symbol.dispose]() }
+      const previous = residencies.filter(agent => agent.id === row.id)
+      const before = h.member.requests.length
+      await h.ctx.subagents.sendMessage(h.root, row.id,
+        [{ type: 'text', text: task }], { signal: new AbortController().signal })
+      await vi.waitFor(() => {
+        expect(h.member.requests.slice(before).some(request => requestText(request).includes(task))).toBe(true)
+      }, { timeout: 5000 })
+      const resumed = h.member.requests.slice(before).find(request => requestText(request).includes(task))!
+      const current = residencies.filter(agent => agent.id === row.id)
+      expect(current).toHaveLength(previous.length + 1)
+      expect(previous).not.toContain(current.at(-1))
+      expect(resumed.sessionId).toBe(row.id)
+      expect(resumed.provider).toBe('member-route')
+      expect(resumed.model).toBe('member-model')
+      expect(requestText(resumed)).toContain('FIRST_TASK')
+      expect(requestText(resumed)).toContain(task)
+      expect(requestText(resumed)).toContain('UNIQUE_MEMBER_RULES')
+      expect(resumed.tools?.map(tool => tool.name)).toEqual(['read'])
+      expect(teamMembers(h.ctx, h.root).filter(member => member.role === 'teammate').map(member => member.name))
+        .toEqual(['reviewer'])
+    }
+    expect(residencies.filter(agent => agent.id === row.id)).toHaveLength(3)
   }, 20_000)
 
   it('keeps an existing member on its frozen route while a new instance reads the corrected one', async () => {
@@ -425,21 +444,44 @@ describe('durable snapshots and recovery', () => {
       expect(h.member.requests.slice(before).some(request => requestText(request).includes('RESUME_OLD'))).toBe(true)
     }, { timeout: 5000 })
     const resumed = h.member.requests.slice(before).find(request => requestText(request).includes('RESUME_OLD'))!
+    expect(resumed.provider).toBe('member-route')
     expect(resumed.model).toBe('member-model')
+    expect(requestText(resumed)).toContain('UNIQUE_MEMBER_RULES')
+    expect(resumed.tools?.map(tool => tool.name)).toEqual(['read'])
 
-    // A NEW instance of the same role is created from the corrected route.
-    const second = await call(h.ctx, h.root, 'spawn_team_member', { member: 'reviewer', task: 'SECOND_TASK' })
+    const refused = await call(h.ctx, h.root, 'spawn_team_member', { member: 'reviewer', task: 'SECOND_TASK' })
+    expect(refused.isError, resultText(refused)).toBe(false)
+    expect(JSON.parse(resultText(refused))).toMatchObject({
+      status: 'reuse-required',
+      candidates: [expect.objectContaining({ target: 'reviewer', sessionId: original.id, compatibility: 'changed' })],
+    })
+    expect(teamMembers(h.ctx, h.root).filter(row => row.role === 'teammate')).toHaveLength(1)
+
+    // A new instance captures the corrected route when its creation is justified.
+    const second = await call(h.ctx, h.root, 'spawn_team_member', {
+      member: 'reviewer', task: 'SECOND_TASK',
+      creation_reason: 'The corrected route is required for this task while the existing reviewer keeps its frozen route.',
+    })
     expect(second.isError, resultText(second)).toBe(false)
     const fresh = teamMembers(h.ctx, h.root).find(member => member.name === 'reviewer-2')!
     await vi.waitFor(() => expect(memberRequests(h.member, fresh.id).length).toBeGreaterThan(0), { timeout: 5000 })
+    expect(memberRequests(h.member, fresh.id)[0]!.provider).toBe('member-route-2')
     expect(memberRequests(h.member, fresh.id)[0]!.model).toBe('member-model-2')
+    expect(fresh.id).not.toBe(original.id)
 
-    // Two instances, two independent snapshots.
+    // Two instances retain their independent durable snapshots.
     const unit = await h.storage.readUnit()
     const records = Object.values((unit?.tables as Record<string, Record<string, unknown>>)?.members ?? {})
     expect(records).toHaveLength(2)
     expect(new Set(records.map(record => (record as { childSessionId: string }).childSessionId)))
       .toEqual(new Set([original.id, fresh.id]))
+    expect(records.find(record => (record as { memberName: string }).memberName === 'reviewer')).toMatchObject({
+      childSessionId: original.id, route: { provider: 'member-route', model: 'member-model' },
+      policy: { mode: 'custom', allow: ['read'] },
+    })
+    expect(records.find(record => (record as { memberName: string }).memberName === 'reviewer-2')).toMatchObject({
+      childSessionId: fresh.id, route: { provider: 'member-route-2', model: 'member-model-2' },
+    })
   }, 25_000)
 
   it('gives two concurrent members of different Teams disjoint snapshots', async () => {

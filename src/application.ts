@@ -17,20 +17,20 @@ import type { Agent } from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-agent-team'
 import type {} from '@deepseek-ai/dsh-subagent'
 import { defineTool } from '@deepseek-ai/dsh-tools'
-import { ReasoningEffortId } from '@deepseek-ai/dsh-llm'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm/types'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import { randomUUID } from 'node:crypto'
 import { PERSONA_PREFIX_SECTION } from '@deepseek-ai/dsh-system-prompt'
 import type {} from '@deepseek-ai/dsh-system-prompt'
-import { IMPLICIT_TOOLS, captainBriefing, definitionFingerprint, findMember, memberBriefing, memberTargets, memberTeamDivision, toolMode } from './presets.ts'
+import { IMPLICIT_TOOLS, availableMemberTarget, captainBriefing, definitionFingerprint, findMember, memberBriefing, memberTargets, memberTeamDivision, toolMode } from './presets.ts'
 import type { TeamAgentPreset, TeamCaptainPreset, TeamPreset } from './types.ts'
 import type { MemberRuntime } from './member-runtime.ts'
 import { teamMembers, reserveMember } from './team-runtime.ts'
 import { depthRefusal, routeRefusal } from './delegation.ts'
 import { memberProviderFor } from './member-identity.ts'
 import { guardPolicy, inheritedFilter, isOwnLayerTool, policyOf } from './tool-policy.ts'
-import { SPAWN_TEAM_MEMBER_DESCRIPTION } from './tool-descriptions.ts'
+import { LIST_TEAM_MEMBERS_DESCRIPTION, SPAWN_TEAM_MEMBER_DESCRIPTION } from './tool-descriptions.ts'
+import { MANAGED_MEMBER_SCHEMA, inspectTeamMembers, routeOptions, routedMember } from './member-reuse.ts'
 
 /** The route this plugin actually installed on one created member. */
 const MEMBER_ROUTE_SCHEMA = {
@@ -48,8 +48,11 @@ const SPAWN_VALUE_SCHEMA = {
   type: 'object',
   additionalProperties: false,
   properties: {
-    target: { type: 'string', required: true },
-    status: { type: 'string', required: true, enum: ['active', 'failed'] },
+    target: { type: 'string' },
+    status: { type: 'string', required: true, enum: ['active', 'failed', 'reuse-required'] },
+    message: { type: 'string' },
+    candidates: { type: 'array', items: MANAGED_MEMBER_SCHEMA },
+    creationReason: { type: 'string' },
     // The route this plugin installed from the member's frozen snapshot. The
     // host roster reports a different value (it falls back to the Lead's
     // options), so the two are never presented as one fact.
@@ -113,30 +116,6 @@ export interface TeamApplicationOptions {
     readonly disclosure?: string | undefined
     /** Declare the executor and return the disposer that releases it. */
     readonly install: () => () => void
-  }
-}
-
-/** Child Agent options resolved from one configured slot. */
-interface RouteOptions {
-  /** LLM provider route id. */
-  readonly provider: string
-  /** Provider-owned model id. */
-  readonly model: string
-  /** Adapter-owned reasoning effort, when the slot configured one. */
-  readonly reasoningEffort?: ReturnType<typeof ReasoningEffortId>
-}
-
-/**
- * Build the child route of one configured agent slot.
- * @param preset - the configured captain or member.
- * @returns the child Agent options, or undefined without a configured route.
- */
-function routeOptions(preset: TeamAgentPreset): RouteOptions | undefined {
-  if (preset.provider === '' || preset.model === '') return undefined
-  return {
-    provider: preset.provider,
-    model: preset.model,
-    ...preset.reasoningEffort === '' ? {} : { reasoningEffort: ReasoningEffortId(preset.reasoningEffort) },
   }
 }
 
@@ -250,31 +229,6 @@ function classifySpawnFailure(error: unknown, roster: readonly { readonly name: 
 }
 
 /**
- * Pick the member whose route one spawn uses.
- *
- * The roster, role, standing prompt, and tool scope come from the definition
- * the task started with, so a task keeps summoning the members it began with.
- * The route is operational rather than behavioral: it is read from the stored
- * definition for the same target, which is how a route corrected while the task
- * runs reaches the next member the captain summons. A stored Team that is gone,
- * or that no longer carries the target, leaves the frozen route in place.
- * @param frozen - the member as the applied definition holds it.
- * @param stored - the latest stored definition of the applied Team, when the Host still has it.
- * @returns the member whose route this spawn uses.
- */
-function routedMember(frozen: TeamAgentPreset, stored: TeamPreset | undefined): TeamAgentPreset {
-  if (stored === undefined) return frozen
-  if (frozen.id !== undefined) {
-    const identified = stored.members.filter(member => member.id === frozen.id)
-    return identified.length === 1 ? identified[0]! : frozen
-  }
-  // Legacy records have no stable identity. Match a unique display name, never
-  // the index-derived target (reordering Chinese names must not change routes).
-  const matches = stored.members.filter(member => member.name.trim() === frozen.name.trim())
-  return matches.length === 1 ? matches[0]! : frozen
-}
-
-/**
  * Register the model-facing member tool on one Session.
  *
  * Official rc.2's Team request accepts only `name`, `description`, `prompt`,
@@ -301,14 +255,51 @@ function registerMemberTool(
 ): () => void {
   const targets = memberTargets(team)
   const summary = targets.map(({ target }) => target).join(', ')
-  const reserved = new Set<string>()
-  return agent.ctx.tools.register(defineTool({
+  const reserved = new Map<string, string>()
+  const disposeList = agent.ctx.tools.register(defineTool({
+    name: 'list_team_members',
+    description: LIST_TEAM_MEMBERS_DESCRIPTION,
+    parameters: {
+      offset: { type: 'integer', description: 'Non-negative number of instances to skip. Defaults to 0.' },
+    },
+    isConcurrencySafe: () => true,
+    output: {
+      schema: {
+        type: 'object', additionalProperties: false,
+        properties: {
+          teamId: { type: 'string', required: true },
+          members: { type: 'array', required: true, items: MANAGED_MEMBER_SCHEMA },
+          nextOffset: { type: 'integer' }, issue: { type: 'string' },
+        },
+      },
+      render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }],
+    },
+    async execute(args, exec) {
+      if (exec.agent !== agent) throw new Error('list_team_members requires this Team captain')
+      if (members === undefined) throw new Error('The preset member runtime is unavailable')
+      const result = await inspectTeamMembers(ctx, agent, team, stored(), members)
+      const offset = args.offset ?? 0
+      if (!Number.isSafeInteger(offset) || offset < 0) throw new Error('offset must be a non-negative safe integer')
+      return {
+        teamId: team.id, members: result.members.slice(offset, offset + 100),
+        ...offset + 100 < result.members.length ? { nextOffset: offset + 100 } : {},
+        ...result.issue === undefined ? {} : { issue: result.issue },
+      }
+    },
+  }))
+  let disposeSpawn: () => void
+  try {
+    disposeSpawn = agent.ctx.tools.register(defineTool({
     name: 'spawn_team_member',
     description: `${SPAWN_TEAM_MEMBER_DESCRIPTION} Available members: ${summary.length === 0 ? '(none)' : summary}.`,
     parameters: {
       member: { type: 'string', required: true, description: 'Member target from the active Team preset roster.' },
       task: { type: 'string', required: true, description: 'Complete initial task for the member, including every fact it needs.' },
       description: { type: 'string', description: 'Short description of the delegated responsibility; defaults to the member preset description.' },
+      creation_reason: {
+        type: 'string',
+        description: 'Explain why another instance is needed when this role already has one. Valid needs include independent parallel work or review, unrelated work needing isolated context, stale conclusions, updated role configuration, or replacement after confirmed non-resumable failure. Related follow-ups use send_message. Temporary capacity or closing errors call for waiting or retrying.',
+      },
       context: {
         type: 'string',
         enum: ['fresh', 'fork'],
@@ -317,7 +308,7 @@ function registerMemberTool(
     },
     output: {
       schema: SPAWN_VALUE_SCHEMA,
-      render: (_args: unknown, value: { target: string; status: string; configuredRoute?: unknown }) => [
+      render: (_args, value) => [
         { type: 'text', text: JSON.stringify(value) },
       ],
     },
@@ -335,6 +326,23 @@ function registerMemberTool(
         throw new Error('This Session was composed without the preset member runtime, so a summoned member '
           + 'could not be given its frozen configuration. Spawning a member is refused.')
       }
+      const inventory = await inspectTeamMembers(ctx, caller, team, stored(), members)
+      if (inventory.issue !== undefined) throw new Error(inventory.issue)
+      const candidates = inventory.members.filter(row => row.teamId === team.id && row.roleTarget === target)
+      const pending = [...reserved].filter(([, roleTarget]) => roleTarget === target).map(([name]) => ({
+        management: 'preset' as const, routeMode: 'unknown' as const,
+        target: name, teamId: team.id, roleTarget: target,
+        activity: 'provisioning' as const, snapshot: 'pending' as const,
+        compatibility: 'unknown' as const, differences: [], continuation: 'provisioning' as const,
+      }))
+      const creationReason = args.creation_reason?.trim() || undefined
+      if (creationReason === undefined && candidates.length + pending.length > 0) {
+        return {
+          status: 'reuse-required' as const,
+          message: 'Review list_team_members and the candidates before creating another instance. Continue related work with send_message using the exact target and compatible frozen configuration. For independent parallel work or review, isolated context, updated configuration, or a confirmed non-resumable replacement, call again with creation_reason. Wait or retry temporary capacity and closing failures.',
+          candidates: [...candidates, ...pending].slice(0, 100),
+        }
+      }
       // Creation admission comes before anything durable exists: a refused
       // creation leaves no intent record, no roster row, and no model request.
       const depth = depthRefusal(ctx, caller)
@@ -348,14 +356,11 @@ function registerMemberTool(
       // A member's model-facing name is a path from the root, so only its last
       // segment is the name unique among this Lead's children.
       const used = new Set(teamMembers(ctx, caller).map(row => row.name.split('/').pop() ?? row.name))
-      for (const name of reserved) used.add(name)
-      let instance = target
-      let suffix = 2
-      while (used.has(instance)) {
-        const tail = `-${suffix++}`
-        instance = `${target.slice(0, 64 - tail.length).replace(/-+$/u, '')}${tail}`
-      }
-      reserved.add(instance)
+      for (const name of reserved.keys()) used.add(name)
+      for (const entry of targets) if (entry.target !== target) used.add(entry.target)
+      for (const row of inventory.members) used.add(row.target)
+      const instance = availableMemberTarget(target, used)
+      reserved.set(instance, target)
       try {
         return await members.admit(async () => {
           const task: ContentBlock[] = [{ type: 'text', text: args.task }]
@@ -418,6 +423,7 @@ function registerMemberTool(
             return {
               target: activation.name,
               status: 'active' as const,
+              ...creationReason === undefined ? {} : { creationReason },
               ...route === undefined ? {} : { configuredRoute: { ...route } },
             }
           } catch (error: unknown) {
@@ -435,7 +441,12 @@ function registerMemberTool(
         })
       } finally { reserved.delete(instance) }
     },
-  }))
+    }))
+  } catch (error: unknown) {
+    disposeList()
+    throw error
+  }
+  return () => { disposeSpawn(); disposeList() }
 }
 
 /**

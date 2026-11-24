@@ -16,13 +16,14 @@ import Subagents from '@deepseek-ai/dsh-subagent'
 import * as Spawn from '@deepseek-ai/dsh-subagent-spawn-in-process'
 import * as Fork from '@deepseek-ai/dsh-subagent-fork-in-process'
 import TeamService from '@deepseek-ai/dsh-agent-team'
-import * as TeamTools from '@deepseek-ai/dsh-tool-agent-team'
+import * as NativeSubagentTools from '@deepseek-ai/dsh-tool-subagent'
+import * as SubagentControl from '@deepseek-ai/dsh-tool-subagent-control'
 import { mkdtemp, rm, realpath } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { applyTeamToAgent } from '../src/application.ts'
 import { apply, inject } from '../src/index.ts'
-import { waitForTeamApplication } from './fixtures/plugin-harness.ts'
+import { disposeRealTeamContext, waitForTeamApplication } from './fixtures/plugin-harness.ts'
 import TeamPresetsToolCatalog from '../src/tool-catalog.ts'
 import { guardPolicy, policyOf } from '../src/tool-policy.ts'
 import { BUILTIN_TEAM_IDS } from '../src/builtin-teams.ts'
@@ -34,7 +35,10 @@ import { FixtureSessionQuery } from './fixtures/session-query.ts'
 const contexts: Context[] = []
 const temporary: string[] = []
 afterEach(async () => {
-  for (const ctx of contexts.splice(0).reverse()) await ctx.fiber.dispose()
+  for (const ctx of contexts.splice(0).reverse()) {
+    if (ctx.get('subagents') === undefined) await ctx.fiber.dispose()
+    else await disposeRealTeamContext(ctx)
+  }
   for (const path of temporary.splice(0)) {
     // Delete only the independently created and checked fixture root.
     const absolute = await realpath(path)
@@ -53,10 +57,17 @@ async function call(ctx: Context, agent: Agent, name: string, args: object = {})
   if (settlement === undefined) throw new Error(`the ${name} batch settled no result`)
   return settlement.result
 }
-async function base(script?: ConstructorParameters<typeof MockAdapter>[0], options: { workingDirectory?: boolean } = {}) {
+async function base(
+  script?: ConstructorParameters<typeof MockAdapter>[0],
+  options: { workingDirectory?: boolean; sessionRoot?: string } = {},
+) {
   const ctx = new Context()
   contexts.push(ctx)
   await mountAgentLoopTestDependencies(ctx, { workingDirectory: options.workingDirectory ?? true })
+  if (options.sessionRoot !== undefined) {
+    await ctx.plugin(JsonlSessionPersistence, { root: options.sessionRoot, compression: 'none' })
+    await ctx.plugin(FixtureSessionQuery)
+  }
   await ctx.plugin(AgentLoop, { agents: [] })
   const adapter = new MockAdapter(script ?? Array.from({ length: 30 }, () => textResponse('done')))
   ctx.llm.registerAdapter(['mock'], adapter)
@@ -64,13 +75,19 @@ async function base(script?: ConstructorParameters<typeof MockAdapter>[0], optio
 }
 
 describe('strict capability execution', () => {
-  it('does not veto normal in-process delegation or native Team creation without a preset selection', async () => {
-    const script = Array.from({ length: 30 }, () => textResponse('done'))
-    const { ctx } = await base(script)
+  it('does not veto native in-process creation or messaging without a preset selection', async () => {
+    let nativeProbeSession: string | undefined
+    let nativeProbePending = false
+    const script = Array.from({ length: 30 }, () => (options: GenerateOptions) => {
+      if (nativeProbePending && options.sessionId === nativeProbeSession) {
+        nativeProbePending = false
+        return toolCallResponse('member-native-call', 'subagent', { name: 'nested', description: 'nested', prompt: 'done' })
+      }
+      return textResponse('done')
+    })
     const storage = await mkdtemp(join(tmpdir(), 'team-presets-security-'))
     temporary.push(storage)
-    await ctx.plugin(JsonlSessionPersistence, { root: storage, compression: 'none' })
-    await ctx.plugin(FixtureSessionQuery)
+    const { ctx } = await base(script, { sessionRoot: storage })
     await ctx.plugin(Subagents)
     await ctx.plugin(Spawn, { providerName: 'spawn' })
     await ctx.plugin(TeamService)
@@ -78,17 +95,18 @@ describe('strict capability execution', () => {
     const config = { teams: { get: () => [] }, selections: { get: () => [] }, freshProvider: 'spawn', seededDefaults: { get: () => [...BUILTIN_TEAM_IDS] }, forkProvider: 'fork' }
     await ctx.plugin(Object.assign((owner: Context) => apply(owner, config), { inject }))
     const handle = await ctx.agents.create({ sessionId: SessionId('ordinary-root'), agentOptions: { provider: 'mock', model: 'mock' } })
-    // TeamTools installs once published Agents can be resolved as live members.
-    await ctx.plugin(TeamTools)
+    await ctx.plugin(NativeSubagentTools, { provider: 'spawn', maxDepth: 1 })
+    await ctx.plugin(SubagentControl)
     const childResults: { callId: string; error: boolean; text: string }[] = []
-    ctx.on('session/event', (_session, event) => {
-      if (event.type === 'tool/result') childResults.push({ callId: event.data.message.toolCallId, error: event.data.message.isError === true,
+    ctx.on('session/event', (session, event) => {
+      if (session.id === nativeProbeSession && event.type === 'tool/result') childResults.push({ callId: event.data.message.toolCallId, error: event.data.message.isError === true,
         text: event.data.message.content.flatMap(block => block.type === 'text' ? [block.text] : []).join('') })
     })
     const run = await ctx.subagents.startActivation({
       provider: 'spawn',
       label: 'ordinary',
-      request: { parent: handle.agent, prompt: [{ type: 'text', text: 'ordinary task' }], signal: new AbortController().signal },
+      parent: handle.agent,
+      prompt: [{ type: 'text', text: 'ordinary task' }],
       signal: new AbortController().signal,
       delivery: 'caller',
     })
@@ -98,16 +116,18 @@ describe('strict capability execution', () => {
     // the Team capability and its member tool wait for a selection.
     expect(ctx.tools.get('get_team_preset', handle.agent)).toBeDefined()
     expect(ctx.tools.get('spawn_team_member', handle.agent)).toBeUndefined()
-    const native = await call(ctx, handle.agent, 'spawn_teammate', { name: 'ordinary-member', description: 'ordinary native creation', prompt: 'done' })
+    const native = await call(ctx, handle.agent, 'subagent', { name: 'ordinary-member', description: 'ordinary native creation', prompt: 'done' })
     expect(native.isError, JSON.stringify(native.content)).toBe(false)
     await vi.waitFor(() => expect(teamMembers(ctx, handle.agent).filter(member => member.role === 'teammate').every(member => member.status === 'inactive')).toBe(true))
-    // Ask the real upstream member to exercise its native spawn tool. The
-    // upstream Lead-only check, not this plugin, must own the rejection.
-    // Splice after ordinary first prompts, so the next cold activation uses it.
-    script.unshift(toolCallResponse('member-native-call', 'spawn_teammate', { name: 'nested', description: 'nested', prompt: 'done' }), textResponse('done'))
-    await ctx.subagents.sendMessage(handle.agent, teamMembers(ctx, handle.agent).find(member => member.name === 'ordinary-member')!.id, [{ type: 'text', text: 'native behavior probe' }], { signal: new AbortController().signal })
+    // Completion notices can also request the shared adapter. Scope the probe
+    // to the member Session so only the child's call exercises its depth cap.
+    nativeProbeSession = teamMembers(ctx, handle.agent).find(member => member.name === 'ordinary-member')!.id
+    nativeProbePending = true
+    const sent = await call(ctx, handle.agent, 'send_message', { agent: 'ordinary-member', message: 'native behavior probe' })
+    expect(sent.isError, JSON.stringify(sent.content)).toBe(false)
     await vi.waitFor(() => expect(childResults.some(result => result.callId === 'member-native-call')).toBe(true))
-    expect(childResults.find(result => result.callId === 'member-native-call')?.text).toContain('Team Lead')
+    expect(childResults.find(result => result.callId === 'member-native-call')?.error).toBe(true)
+    expect(childResults.find(result => result.callId === 'member-native-call')?.text).toContain('exceeds maxDepth 1')
     expect(childResults.find(result => result.callId === 'member-native-call')?.text).not.toContain('preset-managed creation')
   })
 
@@ -179,13 +199,15 @@ describe('strict capability execution', () => {
 describe('real durable preset-managed creation', () => {
   it('creates a second role instance, blocks native bypass, and retains strict policy after cold resume', async () => {
     const requestsPerChild = new Map<string, number>()
+    const storage = await mkdtemp(join(tmpdir(), 'team-presets-security-'))
+    temporary.push(storage)
     const { ctx, adapter } = await base(Array.from({ length: 30 }, () => options => {
       const id = options.sessionId ?? ''
       if (id === 'managed-root') return textResponse('done')
       const count = (requestsPerChild.get(id) ?? 0) + 1
       requestsPerChild.set(id, count)
       return count % 2 === 1 ? toolCallResponse(`probe-${count}`, 'own_mutation', {}) : textResponse('done')
-    }))
+    }), { sessionRoot: storage })
     const created: Agent[] = []
     const outcomes: { id: string; error: boolean }[] = []
     ctx.on('agent/created', ({ agent }) => { created.push(agent) })
@@ -194,10 +216,6 @@ describe('real durable preset-managed creation', () => {
         outcomes.push({ id: session.id, error: event.data.message.isError === true })
       }
     })
-    const storage = await mkdtemp(join(tmpdir(), 'team-presets-security-'))
-    temporary.push(storage)
-    await ctx.plugin(JsonlSessionPersistence, { root: storage, compression: 'none' })
-    await ctx.plugin(FixtureSessionQuery)
     // The member runtime's durable unit: the real hub, JSON backend, and domain
     // form the dsh-base bundle composes. Without it, member creation is
     // refused by design rather than running on the Lead's route.
@@ -208,7 +226,8 @@ describe('real durable preset-managed creation', () => {
     await ctx.plugin(Spawn, { providerName: 'spawn' })
     await ctx.plugin(Fork, { providerName: 'fork' })
     await ctx.plugin(TeamService)
-    await ctx.plugin(TeamTools)
+    await ctx.plugin(NativeSubagentTools, { provider: 'spawn' })
+    await ctx.plugin(SubagentControl)
     const body = vi.fn(async () => 'forbidden')
     ctx.on('agent/created', ({ agent }) => {
       agent.ctx.tools.register({ name: 'own_mutation', description: 'own mutation', parameters: {},
@@ -244,10 +263,16 @@ describe('real durable preset-managed creation', () => {
     await waitForTeamApplication(ctx, root.agent)
     const first = await call(ctx, root.agent, 'spawn_team_member', { member: 'reviewer', task: 'review first' })
     expect(first.isError, JSON.stringify(first.content)).toBe(false)
-    const second = await call(ctx, root.agent, 'spawn_team_member', { member: 'reviewer', task: 'review second', context: 'fork' })
+    const second = await call(ctx, root.agent, 'spawn_team_member', {
+      member: 'reviewer', task: 'review second', context: 'fork',
+      creation_reason: 'Review an independent file scope in parallel while the first reviewer completes its task.',
+    })
     expect(second.isError, JSON.stringify(second.content)).toBe(false)
     const rows = teamMembers(ctx, root.agent).filter(row => row.role === 'teammate')
     expect(rows.map(row => row.name)).toEqual(['reviewer', 'reviewer-2'])
+    await vi.waitFor(() => {
+      for (const row of rows) expect(memberRoute.requests.some(request => request.sessionId === row.id)).toBe(true)
+    })
     for (const row of rows) {
       // Continuation owner may have disposed an idle activation already. Verify
       // the registered child and the route its first request actually used.
@@ -259,11 +284,17 @@ describe('real durable preset-managed creation', () => {
       // No request of this member ever reached the Session's own route.
       expect(adapter.requests.filter(request => request.sessionId === row.id)).toHaveLength(0)
     }
-    expect((await call(ctx, root.agent, 'spawn_teammate', { name: 'bypass', description: 'bypass', prompt: 'bypass' })).isError).toBe(true)
+    expect((await call(ctx, root.agent, 'subagent', { name: 'bypass', description: 'bypass', prompt: 'bypass' })).isError).toBe(true)
     expect(body).not.toHaveBeenCalled()
     const firstId = rows[0]!.id
-    await ctx.subagents.drainChildren(root.agent, [firstId])
-    expect(ctx.agents.get(firstId)).toBeUndefined()
+    await vi.waitFor(() => expect(ctx.agents.get(firstId)).toBeUndefined())
+    expect(ctx.sessions.get(firstId)).toBeUndefined()
+    expect(await ctx.sessionPersistence.stat(firstId)).toBeDefined()
+    const frozen = await ctx.sessionQuery.observeSession(firstId)
+    try {
+      expect(frozen.source).toBe('prepared')
+      expect(frozen.projections).toBeDefined()
+    } finally { frozen[Symbol.dispose]() }
     const previousCreations = created.filter(agent => agent.id === firstId).length
     await ctx.subagents.sendMessage(root.agent, teamMembers(ctx, root.agent).find(member => member.name === 'reviewer')!.id, [{ type: 'text', text: 'continue' }], { signal: new AbortController().signal })
     await vi.waitFor(() => expect(created.filter(agent => agent.id === firstId).length).toBeGreaterThan(previousCreations), { timeout: 3000 })

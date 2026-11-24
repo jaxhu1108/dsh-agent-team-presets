@@ -307,7 +307,7 @@ describe('application composition', () => {
   it('registers no persona or briefing for a Team that states nothing', async () => {
     const { ctx, agent, members } = await setup()
     const application = applyTeamToAgent(ctx, agent, team([], { name: '', description: '', systemPrompt: '   ' }), { fresh: 'spawn', fork: 'fork' }, undefined, members)
-    expect(ctx.tools.schemas(agent).map(tool => tool.name)).toEqual(['read', 'spawn_team_member'])
+    expect(ctx.tools.schemas(agent).map(tool => tool.name)).toEqual(['read', 'list_team_members', 'spawn_team_member'])
     application.dispose()
   })
 

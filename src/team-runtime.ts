@@ -120,6 +120,7 @@ export function teamMembers(ctx: Context, root: Agent): PresetMemberView[] {
     const membership = membershipOf(ctx, child)
     if (membership?.root !== root) continue
     rows.set(child.id, {
+      ...rows.get(child.id),
       id: child.id,
       name: membership.name,
       role: 'teammate',

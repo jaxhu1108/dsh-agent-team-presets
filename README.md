@@ -6,7 +6,7 @@
 
 中文 | [English](<README.en.md>)
 
-> **版本 v0.2.6** · 适配 DeepSeek Runtime `0.2.2-rc.3` 及以后的 0.2.x
+> **版本 v0.2.7** · 适配 DeepSeek Runtime `0.2.2-rc.3` 及以后的 0.2.x
 >
 > 这是一个 **DSH 插件**：给你的 DeepSeek Runtime 加一个可视化的「智能体团队预设」管理器。配好一套团队，从输入区一键选用，队长就能带着队员干活。
 >
@@ -77,10 +77,10 @@ dsh --version
 
 ### 版本号别搞混
 
-- **插件版本**：本版 `0.2.6`
+- **插件版本**：本版 `0.2.7`
 - **Runtime 版本**：例如 `0.2.2-rc.3`
 
-两条完全独立的版本线。插件 `0.2.6` 跑在 Runtime `0.2.2-rc.3` 上是**正常组合**，不是版本不匹配。
+两条完全独立的版本线。插件 `0.2.7` 跑在 Runtime `0.2.2-rc.3` 上是**正常组合**，不是版本不匹配。
 
 ---
 
@@ -95,7 +95,7 @@ dsh plugin --profile web add dsh-team-presets
 把 `web` 换成你实际的 profile 名。要固定本版：
 
 ```sh
-dsh plugin --profile web add dsh-team-presets@0.2.6
+dsh plugin --profile web add dsh-team-presets@0.2.7
 ```
 
 > **为什么推荐 npm**：只有从 registry 安装的插件才会被插件管理器**自动检测新版本**。管理器只放行 `kind === 'registry'` 的来源（见 `plugin-manager/src/index.ts` 的 `updateRefusal()`），`github:` 会被判定成 `kind: 'git'`，永远不会提示更新。想有更新提示，就用这条。
@@ -109,7 +109,7 @@ dsh plugin --profile web add github:jaxhu1108/dsh-agent-team-presets
 要固定某个发布 tag：
 
 ```sh
-dsh plugin --profile web add github:jaxhu1108/dsh-agent-team-presets#v0.2.6
+dsh plugin --profile web add github:jaxhu1108/dsh-agent-team-presets#v0.2.7
 ```
 
 > 这条路径**不会**收到更新提示，新版本要手动重装。适合想跟仓库最新提交、或 npm 不可达的场景。
@@ -133,7 +133,7 @@ dsh plugin --profile web add github:jaxhu1108/dsh-agent-team-presets#v0.2.6
 按插件管理器的提示重新加载（或重启 DSH），然后：
 
 1. 打开 **设置 → 智能体团队预设**
-2. 确认插件详情显示名称 `dsh-team-presets`、版本 `0.2.6`
+2. 确认插件详情显示名称 `dsh-team-presets`、版本 `0.2.7`
 3. 确认组件状态是「运行中」
 
 ### 注意事项
@@ -214,7 +214,7 @@ dsh plugin --profile web add github:jaxhu1108/dsh-agent-team-presets#v0.2.6
 
 ### 三个容易踩的坑
 
-1. **队员召唤是模板实例化，不是"复用同一个人"**。每次召唤生成唯一 target（`executor`、`executor-2`……）。想让同一个队员接着干，用 `send_message` 发给他已有的 target，**不要重新召唤**。
+1. **派单前先用 `list_team_members` 查询成员**。结果包含稳定团队与角色身份、冻结配置差异和恢复状态。延续相关任务时用 `send_message` 发给已有 target。需要并行、独立审查、隔离上下文、更新配置或替代已确认不可恢复的成员时，在 `spawn_team_member` 的 `creation_reason` 写明理由。已有同角色实例而理由缺省时，工具返回 `reuse-required` 和候选信息。
 2. **改了预设不等于当场生效**。空闲会话保存后立即生效；正在跑任务的会话会在**下一次任务开始前**才采用新定义，当前任务保留它启动时的那份定义。
 3. **正在执行时不能改预设**。团队里有成员在跑（running / provisioning），`update_team_preset` 会拒绝，返回 `team-busy`。等跑完或中断掉再改。
 
@@ -229,7 +229,7 @@ dsh plugin --profile web add github:jaxhu1108/dsh-agent-team-presets#v0.2.6
 | 展示元数据 | 简介、标签、适用场景、推荐任务、备注。**纯展示，绝不注入 LLM 上下文**，不烧 token |
 | 队长 | 会话的主智能体。非空提示词会**替换**它的 persona 前缀；队长始终用会话当前模型 |
 | 成员 | 队长可召唤的角色模板 |
-| 名称 | 显示名 + target 基础。ASCII 字母/数字/连字符，≤64 字符，不能叫 `lead` |
+| 名称 | 显示名用于生成 target。小写 ASCII 字母开头、字母/数字/连字符、总长 ≤32 的名称可直接使用。其他名称生成 `member-N`，`lead` 为保留名。实例后缀计入总长 |
 | 描述 | 给队长看的选人依据，建议 ≤200 字符 |
 | 颜色 | 设置页和名册里的区分色 |
 | 提供商 / 模型 | **仅成员**。留空 = 继承队长路由 |
@@ -343,12 +343,16 @@ dsh plugin --profile web add github:jaxhu1108/dsh-agent-team-presets#v0.2.6
 
 | 工具 | 作用 |
 |---|---|
+| `list_team_members` | 查询已有实例的稳定团队与角色身份、活动状态、冻结配置差异和续接状态 |
+| `spawn_team_member` | 创建角色实例。已有同角色实例而未说明 `creation_reason` 时返回 `reuse-required` 与候选信息 |
 | `get_team_preset` | 读当前/指定团队预设，含完整成员配置和设置修订号 |
 | `update_team_preset` | 用 CAS 修订号改团队。人事权限开启时可增删改队员；否则只改描述和提示词 |
 | `list_team_skills` | 列私有库技能、来源、依赖、角色分配状态 |
 | `assign_team_skill` | 给某角色分配技能（作用域限定该 Agent） |
 | `unassign_team_skill` | 解除分配 |
 | `remove_team_skill` | 从私有库删除（受阻断规则保护） |
+
+快照与兼容性字段描述已有记录。结合 `continuation` 和实际消息恢复判断续接健康，`unchecked` 表示尚待验证。`inactive` 表示当前没有执行轮次。
 
 ---
 
@@ -480,8 +484,11 @@ npm test            # 单元/组合测试
 |---|---|
 | 类型检查 host | 0 本地诊断 |
 | 类型检查 client | 0 本地诊断 |
-| 构建 | 通过，`lib/index.js` SHA256 `5dc3c1dbf55f96857ea313563caca82cda2a40824b52d9d175bb4eb9627b71d1` |
-| 全量测试 | **764 个用例：763 通过 / 1 跳过 / 0 失败**（52 个文件全过） |
+| 构建 | 通过，`lib/index.js` SHA256 `21b973a814b86668600e7690dabee0039db0e72615ef91928db03b3f1c050301` |
+| 本次定向验证 | 213 条通过，包含真实持久化与连续冷恢复 |
+| 全量测试 | 正式发布工作区实测 825 用例，807 通过、17 失败、1 跳过。17 项失败均在原版基线中出现 |
+
+类型检查统计本插件的诊断，宿主 checkout 依赖诊断单独排除。
 
 ### 踩过的坑
 

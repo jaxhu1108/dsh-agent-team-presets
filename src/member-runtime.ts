@@ -468,6 +468,10 @@ export class MemberRuntime {
    */
   track<T extends SubagentActivation>(activation: T): T {
     this.activations.add(activation)
+    void activation.result.then(
+      () => { this.activations.delete(activation) },
+      () => { this.activations.delete(activation) },
+    )
     return activation
   }
 
